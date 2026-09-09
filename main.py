@@ -1,6 +1,5 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 import time
 
 import config
@@ -15,7 +14,7 @@ from routers import (
     auth_router,
 )
 
-# ── 1. Create FastAPI Application Instance ──
+# 1. Create FastAPI Application Instance
 app = FastAPI(
     title=config.PROJECT_NAME,
     version=config.VERSION,
@@ -25,26 +24,25 @@ app = FastAPI(
     openapi_url=f"{config.API_V1_PREFIX}/openapi.json"
 )
 
-# ── 2. Configure Middlewares ──
-# CORS (Cross-Origin Resource Sharing) middleware allows our React/Vite frontend to make API calls
+# 2. CORS Middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=config.CORS_ORIGINS,
+    allow_origin_regex=config.CORS_ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Custom performance / request logging middleware
+# 3. Performance / Latency Header Middleware
 @app.middleware("http")
 async def add_process_time_header(request: Request, call_next):
     start_time = time.time()
     response = await call_next(request)
-    process_time = time.time() - start_time
-    response.headers["X-Process-Time"] = f"{process_time:.4f}s"
+    response.headers["X-Process-Time"] = f"{time.time() - start_time:.4f}s"
     return response
 
-# ── 3. Register Domain APIRouters under /api prefix ──
+# 4. Register Domain Routers
 app.include_router(alerts_router, prefix=config.API_V1_PREFIX)
 app.include_router(shelters_router, prefix=config.API_V1_PREFIX)
 app.include_router(requests_router, prefix=config.API_V1_PREFIX)
@@ -54,13 +52,14 @@ app.include_router(volunteers_router, prefix=config.API_V1_PREFIX)
 app.include_router(warehouse_router, prefix=config.API_V1_PREFIX)
 app.include_router(auth_router, prefix=config.API_V1_PREFIX)
 
-# ── 4. Root & Health Check Endpoints ──
+# 5. Root & Health Check Endpoints
 @app.get("/", tags=["Root"])
 def root():
     return {
         "service": config.PROJECT_NAME,
         "status": "online",
         "version": config.VERSION,
+        "database": "supabase_postgresql" if config.USE_SUPABASE else "in_memory_mock",
         "docs": "/docs",
         "endpoints": {
             "alerts": f"{config.API_V1_PREFIX}/alerts",
@@ -75,10 +74,11 @@ def root():
 
 @app.get("/health", tags=["Health"])
 def health_check():
+    db_status = "supabase_connected" if config.USE_SUPABASE else "in_memory_ready"
     return {
         "status": "healthy",
         "timestamp": time.time(),
-        "database": "in_memory_ready"
+        "database": db_status
     }
 
 if __name__ == "__main__":
