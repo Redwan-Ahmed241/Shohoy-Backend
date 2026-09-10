@@ -50,7 +50,7 @@ CORS_ORIGINS: List[str] = [
     "http://127.0.0.1:5173",
     "http://localhost:3000",
     "http://localhost:4173",
-    "https://shohay-bd.vercel.app/",
+    "https://shohay-bd.vercel.app",
 ]
 
 # Allow additional custom origins via environment variable
