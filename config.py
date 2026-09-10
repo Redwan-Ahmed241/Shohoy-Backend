@@ -4,6 +4,8 @@ from typing import List
 # Automatically load .env file if present in local development
 try:
     from dotenv import load_dotenv
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    load_dotenv(os.path.join(base_dir, ".env"))
     load_dotenv()
 except ImportError:
     pass
@@ -48,6 +50,7 @@ CORS_ORIGINS: List[str] = [
     "http://127.0.0.1:5173",
     "http://localhost:3000",
     "http://localhost:4173",
+    "https://shohay-bd.vercel.app/",
 ]
 
 # Allow additional custom origins via environment variable
