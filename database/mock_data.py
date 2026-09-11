@@ -321,3 +321,81 @@ MOCK_REQUESTS_DB: Dict[str, Dict[str, Any]] = {
         "createdAt": "2024-07-15 08:30"
     }
 }
+
+# ── PREDEFINED OPTIONS FOR AUTH & ONBOARDING ──
+PREDEFINED_SKILLS: List[str] = [
+    "First Aid & CPR",
+    "Boat Operation & Navigation",
+    "Search & Rescue",
+    "Swimming & Water Rescue",
+    "Food & Relief Distribution",
+    "Medical / Nursing Care",
+    "Emergency Driving & 4WD",
+    "Logistics & Warehouse Management",
+    "Shelter Administration",
+    "Psychosocial Support & Counseling",
+    "Electrical & Generator Maintenance",
+    "Translation & Field Communication"
+]
+
+PREDEFINED_EQUIPMENT: List[str] = [
+    "Engine Boat / Speedboat",
+    "Life Jackets & Buoys",
+    "First Aid Medical Kit",
+    "Flashlights & High-Beam Searchlights",
+    "Water Purification Kit / Filters",
+    "Emergency Vehicle (Pickup / 4WD)",
+    "Power Generator",
+    "Megaphone & VHF Two-Way Radios",
+    "Ropes, Harnesses & Carabiners",
+    "Tents & Waterproof Tarpaulins",
+    "Solar Lanterns & Battery Banks",
+    "Dry Food Rations & Jerrycans"
+]
+
+PREDEFINED_GENDERS: List[str] = [
+    "Male",
+    "Female",
+    "Other",
+    "Prefer not to say"
+]
+
+MOCK_USERS: List[Dict[str, Any]] = [
+    {
+        "id": "usr-public-001",
+        "role": "public",
+        "first_name": "Rahim",
+        "last_name": "Ahmed",
+        "phone_number": "01712345678",
+        "email": "rahim.ahmed@example.com",
+        "avatar": "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=200&q=80",
+        "gender": "Male",
+        "skills": ["First Aid & CPR", "Food & Relief Distribution", "Bicycle Logistics"],
+        "equipment": ["Life Jackets & Buoys", "First Aid Medical Kit"],
+        "nid_number": None,
+        "address": None,
+        "dob": None,
+        "experience_certificate": None,
+        "verification_status": "Verified",
+        "created_at": "2024-07-15T08:00:00Z"
+    },
+    {
+        "id": "usr-field-001",
+        "role": "fieldworker",
+        "first_name": "Nasrin",
+        "last_name": "Akter",
+        "phone_number": "01812345678",
+        "email": "nasrin.akter@redcrescent.bd",
+        "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=200&q=80",
+        "gender": "Female",
+        "skills": ["Boat Operation & Navigation", "Search & Rescue", "Water Safety Training"],
+        "equipment": ["Engine Boat / Speedboat", "Ropes, Harnesses & Carabiners", "Megaphone & VHF Two-Way Radios"],
+        "nid_number": "19948291827361928",
+        "address": "Holding 42, Ward 4, Sunamganj Sadar, Sunamganj",
+        "dob": "1994-08-22",
+        "experience_certificate": "https://example.com/certificates/nasrin_rescue_diver_2023.pdf",
+        "verification_status": "Verified",
+        "created_at": "2024-07-14T10:00:00Z"
+    }
+]
+

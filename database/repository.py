@@ -10,7 +10,11 @@ from .mock_data import (
     MOCK_VOLUNTEER_ASSIGNMENTS,
     MOCK_VOLUNTEER_PROFILE,
     MOCK_WAREHOUSE_ITEMS,
-    MOCK_REQUESTS_DB
+    MOCK_REQUESTS_DB,
+    MOCK_USERS,
+    PREDEFINED_SKILLS,
+    PREDEFINED_EQUIPMENT,
+    PREDEFINED_GENDERS
 )
 
 class InMemoryDatabase:
@@ -23,6 +27,7 @@ class InMemoryDatabase:
         self.volunteer_profile: Dict[str, Any] = copy.deepcopy(MOCK_VOLUNTEER_PROFILE)
         self.warehouse_items: List[Dict[str, Any]] = copy.deepcopy(MOCK_WAREHOUSE_ITEMS)
         self.requests_db: Dict[str, Dict[str, Any]] = copy.deepcopy(MOCK_REQUESTS_DB)
+        self.users: List[Dict[str, Any]] = copy.deepcopy(MOCK_USERS)
 
     # ── ALERTS ──
     def get_alerts(self, severity: Optional[str] = None, search: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -153,5 +158,64 @@ class InMemoryDatabase:
     def get_expiring_items(self) -> List[Dict[str, Any]]:
         return [item for item in self.warehouse_items if item.get('expiryDate')]
 
+    # ── USERS & AUTH ──
+    def get_user_by_id(self, user_id: str) -> Optional[Dict[str, Any]]:
+        for u in self.users:
+            if u["id"] == user_id:
+                return copy.deepcopy(u)
+        return None
+
+    def get_user_by_phone(self, phone: str) -> Optional[Dict[str, Any]]:
+        clean_target = phone.strip().replace(" ", "").replace("-", "")
+        for u in self.users:
+            p = (u.get("phone_number") or "").strip().replace(" ", "").replace("-", "")
+            if p and (p == clean_target or p.endswith(clean_target) or clean_target.endswith(p)):
+                return copy.deepcopy(u)
+        return None
+
+    def get_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
+        clean_target = email.strip().lower()
+        for u in self.users:
+            e = (u.get("email") or "").strip().lower()
+            if e and e == clean_target:
+                return copy.deepcopy(u)
+        return None
+
+    def get_user_by_identifier(self, identifier: str) -> Optional[Dict[str, Any]]:
+        clean_id = identifier.strip().lower()
+        if "@" in clean_id:
+            return self.get_user_by_email(clean_id)
+        return self.get_user_by_phone(clean_id)
+
+    def create_user(self, user_data: Dict[str, Any]) -> Dict[str, Any]:
+        user_id = user_data.get("id") or f"usr-{user_data.get('role', 'public')}-{len(self.users) + 1:03d}"
+        now_str = datetime.utcnow().isoformat() + "Z"
+        new_user = {
+            **user_data,
+            "id": user_id,
+            "created_at": now_str,
+            "updated_at": now_str,
+        }
+        self.users.append(new_user)
+        return copy.deepcopy(new_user)
+
+    def update_user(self, user_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        for i, u in enumerate(self.users):
+            if u["id"] == user_id:
+                now_str = datetime.utcnow().isoformat() + "Z"
+                updated = {**u, **updates, "updated_at": now_str}
+                self.users[i] = updated
+                return copy.deepcopy(updated)
+        return None
+
+    def get_auth_options(self) -> Dict[str, Any]:
+        return {
+            "skills": PREDEFINED_SKILLS,
+            "equipment": PREDEFINED_EQUIPMENT,
+            "genders": PREDEFINED_GENDERS,
+            "roles": ["public", "fieldworker"]
+        }
+
 # Singleton instance
 db = InMemoryDatabase()
+

@@ -134,6 +134,30 @@ CREATE TABLE IF NOT EXISTS warehouse_items (
 CREATE INDEX IF NOT EXISTS idx_warehouse_category ON warehouse_items(category);
 CREATE INDEX IF NOT EXISTS idx_warehouse_status ON warehouse_items(status);
 
+-- 9. Users Table (Public & Fieldworker)
+CREATE TABLE IF NOT EXISTS users (
+    id VARCHAR(50) PRIMARY KEY,
+    role VARCHAR(20) NOT NULL DEFAULT 'public',
+    first_name VARCHAR(100) NOT NULL,
+    last_name VARCHAR(100) NOT NULL,
+    phone_number VARCHAR(50),
+    email VARCHAR(255),
+    avatar VARCHAR(500),
+    gender VARCHAR(20),
+    skills JSONB NOT NULL DEFAULT '[]',
+    equipment JSONB NOT NULL DEFAULT '[]',
+    nid_number VARCHAR(50),
+    address VARCHAR(500),
+    dob VARCHAR(50),
+    experience_certificate TEXT,
+    verification_status VARCHAR(50) DEFAULT 'Pending',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+CREATE INDEX IF NOT EXISTS idx_users_phone ON users(phone_number);
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+
 
 -- ============================================================
 -- SEED DATA (Matches Frontend Mock Datasets 100%)
@@ -191,3 +215,10 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO assistance_requests (id, tracking_id, types, household_size, vulnerable_count, location, contact, notes, status, created_at) VALUES
 ('req-1', 'SHY-2024-89211', '["rescue","water"]', 5, '{"children":2,"elderly":1,"pregnant":0,"disabled":0}', '{"district":"Sunamganj","upazila":"Sunamganj Sadar","union":"Jahangirnagar","address":"Village Nabinagar, Ward 3","landmark":"Near primary school","gpsCoords":"25.0657, 91.4073"}', '{"name":"Rahim Uddin","phone":"01712345678","altPhone":"01912345678","isAnonymous":false}', 'Water rising rapidly on ground floor.', 'In Progress', '2024-07-15 08:30')
 ON CONFLICT (id) DO NOTHING;
+
+-- Seed Users (Public & Fieldworker)
+INSERT INTO users (id, role, first_name, last_name, phone_number, email, avatar, gender, skills, equipment, nid_number, address, dob, experience_certificate, verification_status) VALUES
+('usr-public-001', 'public', 'Rahim', 'Ahmed', '01712345678', 'rahim.ahmed@example.com', 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=200&q=80', 'Male', '["First Aid & CPR", "Food & Relief Distribution", "Bicycle Logistics"]', '["Life Jackets & Buoys", "First Aid Medical Kit"]', NULL, NULL, NULL, NULL, 'Verified'),
+('usr-field-001', 'fieldworker', 'Nasrin', 'Akter', '01812345678', 'nasrin.akter@redcrescent.bd', 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=200&q=80', 'Female', '["Boat Operation & Navigation", "Search & Rescue", "Water Safety Training"]', '["Engine Boat / Speedboat", "Ropes, Harnesses & Carabiners", "Megaphone & VHF Two-Way Radios"]', '19948291827361928', 'Holding 42, Ward 4, Sunamganj Sadar, Sunamganj', '1994-08-22', 'https://example.com/certificates/nasrin_rescue_diver_2023.pdf', 'Verified')
+ON CONFLICT (id) DO NOTHING;
+

@@ -9,8 +9,9 @@ from sqlalchemy.orm import Session
 from .models import (
     AlertModel, ShelterModel, CampaignModel, ContactModel,
     AssistanceRequestModel, VolunteerProfileModel,
-    VolunteerAssignmentModel, WarehouseItemModel
+    VolunteerAssignmentModel, WarehouseItemModel, UserModel
 )
+from .mock_data import PREDEFINED_SKILLS, PREDEFINED_EQUIPMENT, PREDEFINED_GENDERS
 
 # ── Converters: ORM Model -> API DTO Dict ──
 
@@ -126,6 +127,28 @@ def warehouse_to_dict(w: WarehouseItemModel) -> Dict[str, Any]:
         "warehouseName": w.warehouse_name,
         "lastCountDate": w.last_count_date,
     }
+
+def user_to_dict(u: UserModel) -> Dict[str, Any]:
+    return {
+        "id": u.id,
+        "role": u.role,
+        "firstName": u.first_name,
+        "lastName": u.last_name,
+        "phoneNumber": u.phone_number,
+        "email": u.email,
+        "avatar": u.avatar,
+        "gender": u.gender,
+        "skills": u.skills if isinstance(u.skills, list) else [],
+        "equipment": u.equipment if isinstance(u.equipment, list) else [],
+        "nidNumber": u.nid_number,
+        "address": u.address,
+        "dob": u.dob,
+        "experienceCertificate": u.experience_certificate,
+        "verificationStatus": u.verification_status,
+        "createdAt": u.created_at.isoformat() if u.created_at else None,
+        "updatedAt": u.updated_at.isoformat() if u.updated_at else None,
+    }
+
 
 
 class SupabaseRepository:
@@ -315,5 +338,79 @@ class SupabaseRepository:
         ).all()
         return [warehouse_to_dict(w) for w in items]
 
+    # ── USERS & AUTH ──
+    def get_user_by_id(self, db: Session, user_id: str) -> Optional[Dict[str, Any]]:
+        user = db.query(UserModel).filter(UserModel.id == user_id).first()
+        return user_to_dict(user) if user else None
+
+    def get_user_by_phone(self, db: Session, phone: str) -> Optional[Dict[str, Any]]:
+        clean_target = phone.strip().replace(" ", "").replace("-", "")
+        # Query users and match normalized phone
+        users = db.query(UserModel).filter(UserModel.phone_number.is_not(None)).all()
+        for u in users:
+            p = (u.phone_number or "").strip().replace(" ", "").replace("-", "")
+            if p and (p == clean_target or p.endswith(clean_target) or clean_target.endswith(p)):
+                return user_to_dict(u)
+        return None
+
+    def get_user_by_email(self, db: Session, email: str) -> Optional[Dict[str, Any]]:
+        clean_email = email.strip().lower()
+        user = db.query(UserModel).filter(UserModel.email.ilike(clean_email)).first()
+        return user_to_dict(user) if user else None
+
+    def get_user_by_identifier(self, db: Session, identifier: str) -> Optional[Dict[str, Any]]:
+        clean_id = identifier.strip().lower()
+        if "@" in clean_id:
+            return self.get_user_by_email(db, clean_id)
+        return self.get_user_by_phone(db, clean_id)
+
+    def create_user(self, db: Session, data: Dict[str, Any]) -> Dict[str, Any]:
+        count = db.query(UserModel).count()
+        user_id = data.get("id") or f"usr-{data.get('role', 'public')}-{count + 1:03d}"
+        
+        user = UserModel(
+            id=user_id,
+            role=data.get("role", "public"),
+            first_name=data["first_name"],
+            last_name=data["last_name"],
+            phone_number=data.get("phone_number"),
+            email=data.get("email"),
+            avatar=data.get("avatar"),
+            gender=data.get("gender"),
+            skills=data.get("skills", []),
+            equipment=data.get("equipment", []),
+            nid_number=data.get("nid_number"),
+            address=data.get("address"),
+            dob=data.get("dob"),
+            experience_certificate=data.get("experience_certificate"),
+            verification_status=data.get("verification_status", "Pending")
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        return user_to_dict(user)
+
+    def update_user(self, db: Session, user_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        user = db.query(UserModel).filter(UserModel.id == user_id).first()
+        if not user:
+            return None
+
+        for k, v in updates.items():
+            if hasattr(user, k):
+                setattr(user, k, v)
+
+        db.commit()
+        db.refresh(user)
+        return user_to_dict(user)
+
+    def get_auth_options(self) -> Dict[str, Any]:
+        return {
+            "skills": PREDEFINED_SKILLS,
+            "equipment": PREDEFINED_EQUIPMENT,
+            "genders": PREDEFINED_GENDERS,
+            "roles": ["public", "fieldworker"]
+        }
+
 
 supabase_repo = SupabaseRepository()
+
