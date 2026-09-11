@@ -7,15 +7,16 @@ if sys.stdout.encoding != 'utf-8':
     except Exception:
         pass
 
-backend_dir = os.path.abspath(os.path.join(os.getcwd(), '..', 'Shohoy-Backend'))
-sys.path.insert(0, backend_dir)
+project_dir = os.path.abspath(os.path.dirname(__file__))
+if project_dir not in sys.path:
+    sys.path.insert(0, project_dir)
 
 from database import connection
 from database.connection import init_engine, Base
 from database.models import (
     AlertModel, ShelterModel, CampaignModel, ContactModel,
     AssistanceRequestModel, VolunteerProfileModel,
-    VolunteerAssignmentModel, WarehouseItemModel
+    VolunteerAssignmentModel, WarehouseItemModel, UserModel
 )
 from database.supabase_repository import supabase_repo
 
@@ -192,7 +193,64 @@ expiring = supabase_repo.get_expiring_items(db)
 assert len(expiring) == 1
 print("[PASS] Warehouse inventory, low-stock, and expiring queries passed!")
 
-# 9. Test Vercel Entrypoint
+# 9. Test Users (Public & Fieldworker)
+public_user = supabase_repo.create_user(db, {
+    "role": "public",
+    "first_name": "Sadman",
+    "last_name": "Shakib",
+    "phone_number": "01755554444",
+    "email": "sadman@example.com",
+    "avatar": "https://images.unsplash.com/photo-1535713875002",
+    "gender": "Male",
+    "skills": ["First Aid & CPR", "Drone Mapping"],
+    "equipment": ["Life Jackets & Buoys"],
+    "verification_status": "Verified"
+})
+assert public_user["id"].startswith("usr-public")
+assert public_user["role"] == "public"
+print("[PASS] Supabase ORM create_user (Public) passed:", public_user["firstName"], public_user["lastName"])
+
+field_user = supabase_repo.create_user(db, {
+    "role": "fieldworker",
+    "first_name": "Tasmia",
+    "last_name": "Rahman",
+    "phone_number": "01855553333",
+    "email": "tasmia.field@rescue.org",
+    "avatar": "https://images.unsplash.com/photo-1494790108377",
+    "gender": "Female",
+    "skills": ["Search & Rescue", "Boat Operation & Navigation"],
+    "equipment": ["Engine Boat / Speedboat"],
+    "nid_number": "19939988776655443",
+    "address": "Holding 12, River Road, Sunamganj",
+    "dob": "1993-05-15",
+    "experience_certificate": "https://certs.shohay.org/tasmia_rescue_cert.pdf",
+    "verification_status": "Pending"
+})
+assert field_user["id"].startswith("usr-fieldworker")
+assert field_user["nidNumber"] == "19939988776655443"
+assert field_user["verificationStatus"] == "Pending"
+print("[PASS] Supabase ORM create_user (Fieldworker) passed:", field_user["firstName"], f"(NID: {field_user['nidNumber']})")
+
+by_phone = supabase_repo.get_user_by_phone(db, "01755554444")
+assert by_phone is not None
+assert by_phone["id"] == public_user["id"]
+print("[PASS] Supabase ORM get_user_by_phone passed!")
+
+by_email = supabase_repo.get_user_by_email(db, "tasmia.field@rescue.org")
+assert by_email is not None
+assert by_email["id"] == field_user["id"]
+print("[PASS] Supabase ORM get_user_by_email passed!")
+
+updated = supabase_repo.update_user(db, public_user["id"], {"skills": ["First Aid & CPR", "Drone Mapping", "Ambulance Driver"]})
+assert len(updated["skills"]) == 3
+print("[PASS] Supabase ORM update_user passed!")
+
+options = supabase_repo.get_auth_options()
+assert len(options["skills"]) > 0
+assert len(options["equipment"]) > 0
+print("[PASS] Supabase ORM get_auth_options passed!")
+
+# 10. Test Vercel Entrypoint
 from api.index import app as vercel_app
 assert vercel_app is not None
 print("[PASS] api/index.py imports and exposes FastAPI app instance for Vercel!")
