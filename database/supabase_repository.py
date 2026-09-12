@@ -339,8 +339,36 @@ class SupabaseRepository:
         }
 
     def get_open_assignments(self, db: Session) -> List[Dict[str, Any]]:
-        assignments = db.query(VolunteerAssignmentModel).filter(VolunteerAssignmentModel.status == "Available").all()
+        assignments = db.query(VolunteerAssignmentModel).filter(
+            VolunteerAssignmentModel.status == "Available"
+        ).order_by(VolunteerAssignmentModel.created_at.desc()).all()
         return [assignment_to_dict(a) for a in assignments]
+
+    def accept_assignment(self, db: Session, assignment_id: str) -> Optional[Dict[str, Any]]:
+        a = db.query(VolunteerAssignmentModel).filter(VolunteerAssignmentModel.id == assignment_id).first()
+        if not a:
+            return None
+        a.status = "In Progress"
+        assignment_dict = assignment_to_dict(a)
+        
+        v = db.query(VolunteerProfileModel).first()
+        if v:
+            v.current_assignment = assignment_dict
+            v.is_available = True
+        
+        db.commit()
+        db.refresh(a)
+        if v:
+            db.refresh(v)
+        return assignment_dict
+
+    def decline_assignment(self, db: Session, assignment_id: str) -> bool:
+        a = db.query(VolunteerAssignmentModel).filter(VolunteerAssignmentModel.id == assignment_id).first()
+        if not a:
+            return False
+        a.status = "Declined"
+        db.commit()
+        return True
 
     def update_assignment_status(self, db: Session, assignment_id: str, new_status: str) -> bool:
         a = db.query(VolunteerAssignmentModel).filter(VolunteerAssignmentModel.id == assignment_id).first()
@@ -377,9 +405,19 @@ class SupabaseRepository:
             if status == "Checked In":
                 v.is_available = True
                 v.hours_logged = (v.hours_logged or 0) + hours
+            elif status == "Paused":
+                v.is_available = False
             elif status == "Completed":
                 v.tasks_completed = (v.tasks_completed or 0) + 1
                 v.hours_logged = (v.hours_logged or 0) + hours
+                # If current assignment existed, mark it Completed in VolunteerAssignmentModel
+                if v.current_assignment and isinstance(v.current_assignment, dict):
+                    cid = v.current_assignment.get("id")
+                    if cid:
+                        a = db.query(VolunteerAssignmentModel).filter(VolunteerAssignmentModel.id == cid).first()
+                        if a:
+                            a.status = "Completed"
+                v.current_assignment = None
             db.commit()
             db.refresh(v)
             return volunteer_profile_to_dict(v)

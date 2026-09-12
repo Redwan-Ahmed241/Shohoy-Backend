@@ -153,7 +153,22 @@ class InMemoryDatabase:
         return copy.deepcopy(self.volunteer_profile)
 
     def get_open_assignments(self) -> List[Dict[str, Any]]:
-        return list(self.volunteer_assignments)
+        return [a for a in self.volunteer_assignments if a.get('status') == 'Available']
+
+    def accept_assignment(self, assignment_id: str) -> Optional[Dict[str, Any]]:
+        for a in self.volunteer_assignments:
+            if a['id'] == assignment_id:
+                a['status'] = 'In Progress'
+                self.volunteer_profile['currentAssignment'] = copy.deepcopy(a)
+                return copy.deepcopy(a)
+        return None
+
+    def decline_assignment(self, assignment_id: str) -> bool:
+        for a in self.volunteer_assignments:
+            if a['id'] == assignment_id:
+                a['status'] = 'Declined'
+                return True
+        return False
 
     def update_assignment_status(self, assignment_id: str, new_status: str) -> bool:
         for a in self.volunteer_assignments:
@@ -163,7 +178,7 @@ class InMemoryDatabase:
         return False
 
     def get_all_volunteers(self) -> List[Dict[str, Any]]:
-        volunteers = [u for u in self.users.values() if u.get("role") in ("volunteer", "fieldworker")]
+        volunteers = [u for u in self.users if u.get("role") in ("volunteer", "fieldworker")]
         return volunteers
 
     def create_assignment(self, data: Dict[str, Any]) -> Dict[str, Any]:
@@ -186,9 +201,17 @@ class InMemoryDatabase:
         if status == "Checked In":
             p["isAvailable"] = True
             p["hoursLogged"] = p.get("hoursLogged", 0) + hours
+        elif status == "Paused":
+            p["isAvailable"] = False
         elif status == "Completed":
             p["tasksCompleted"] = p.get("tasksCompleted", 0) + 1
             p["hoursLogged"] = p.get("hoursLogged", 0) + hours
+            if p.get("currentAssignment"):
+                cid = p["currentAssignment"].get("id")
+                for a in self.volunteer_assignments:
+                    if a.get("id") == cid:
+                        a["status"] = "Completed"
+            p["currentAssignment"] = None
         return p
 
     # ── WAREHOUSE ──

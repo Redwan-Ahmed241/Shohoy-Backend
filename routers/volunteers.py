@@ -58,25 +58,25 @@ def create_field_assignment(payload: AssignmentCreatePayload, db: Optional[Sessi
 def accept_assignment(assignment_id: str, db: Optional[Session] = Depends(get_db)):
     """Volunteer accepts an open deployment task."""
     if db is not None:
-        success = supabase_repo.update_assignment_status(db, assignment_id, "Assigned")
+        assignment = supabase_repo.accept_assignment(db, assignment_id)
     else:
-        success = mem_db.update_assignment_status(assignment_id, "Assigned")
+        assignment = mem_db.accept_assignment(assignment_id)
 
-    if not success:
+    if not assignment:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Assignment '{assignment_id}' not found."
         )
-    return {"success": True, "assignmentId": assignment_id, "status": "Assigned"}
+    return {"success": True, "assignment": assignment, "status": "In Progress"}
 
 @router.post("/assignments/{assignment_id}/decline", summary="Decline volunteer assignment")
 def decline_assignment(assignment_id: str, db: Optional[Session] = Depends(get_db)):
     """Volunteer declines an assignment."""
     if db is not None:
-        supabase_repo.update_assignment_status(db, assignment_id, "Available")
+        success = supabase_repo.decline_assignment(db, assignment_id)
     else:
-        mem_db.update_assignment_status(assignment_id, "Available")
-    return {"success": True, "assignmentId": assignment_id, "status": "Available"}
+        success = mem_db.decline_assignment(assignment_id)
+    return {"success": True, "assignmentId": assignment_id, "status": "Declined"}
 
 @router.post("/checkin", summary="Volunteer check-in and duty hours tracking")
 def volunteer_checkin(payload: CheckInPayload, db: Optional[Session] = Depends(get_db)):
