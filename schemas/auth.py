@@ -1,4 +1,4 @@
-from typing import Optional, List, Literal
+from typing import Optional, List, Literal, Any
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 UserRole = Literal["public", "fieldworker", "admin", "volunteer"]
@@ -117,11 +117,30 @@ class AuthUser(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
+    @model_validator(mode="before")
+    @classmethod
+    def populate_names(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            if "first_name" not in data and "firstName" in data:
+                data["first_name"] = data["firstName"]
+            if "last_name" not in data and "lastName" in data:
+                data["last_name"] = data["lastName"]
+            if "phone_number" not in data and "phoneNumber" in data:
+                data["phone_number"] = data["phoneNumber"]
+            if "nid_number" not in data and "nidNumber" in data:
+                data["nid_number"] = data["nidNumber"]
+            if "experience_certificate" not in data and "experienceCertificate" in data:
+                data["experience_certificate"] = data["experienceCertificate"]
+            if "verification_status" not in data and "verificationStatus" in data:
+                data["verification_status"] = data["verificationStatus"]
+        return data
+
     @model_validator(mode="after")
     def set_computed_name(self):
-        if not self.name:
+        if not self.name and self.first_name and self.last_name:
             self.name = f"{self.first_name} {self.last_name}".strip()
         return self
+
 
 class AuthResponse(BaseModel):
     success: bool = True

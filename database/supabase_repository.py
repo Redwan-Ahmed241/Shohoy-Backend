@@ -132,22 +132,29 @@ def user_to_dict(u: UserModel) -> Dict[str, Any]:
     return {
         "id": u.id,
         "role": u.role,
+        "first_name": u.first_name,
+        "last_name": u.last_name,
         "firstName": u.first_name,
         "lastName": u.last_name,
+        "phone_number": u.phone_number,
         "phoneNumber": u.phone_number,
         "email": u.email,
         "avatar": u.avatar,
         "gender": u.gender,
         "skills": u.skills if isinstance(u.skills, list) else [],
         "equipment": u.equipment if isinstance(u.equipment, list) else [],
+        "nid_number": u.nid_number,
         "nidNumber": u.nid_number,
         "address": u.address,
         "dob": u.dob,
+        "experience_certificate": u.experience_certificate,
         "experienceCertificate": u.experience_certificate,
+        "verification_status": u.verification_status,
         "verificationStatus": u.verification_status,
-        "createdAt": u.created_at.isoformat() if u.created_at else None,
-        "updatedAt": u.updated_at.isoformat() if u.updated_at else None,
+        "created_at": u.created_at.isoformat() if u.created_at else None,
+        "updated_at": u.updated_at.isoformat() if u.updated_at else None,
     }
+
 
 
 
