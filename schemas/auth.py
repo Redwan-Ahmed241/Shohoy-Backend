@@ -5,44 +5,66 @@ UserRole = Literal["public", "fieldworker", "admin", "volunteer"]
 
 class SendOTPRequest(BaseModel):
     """
-    Step 1: Request OTP via Phone (Twilio) or Email (Resend).
+    Step 1: Request OTP via Email (Resend).
     """
-    identifier: str = Field(..., description="Mobile phone number (e.g. 01712345678) or email address")
-    channel: Optional[Literal["phone", "email", "auto"]] = Field("auto", description="Preferred channel or auto-detect")
+    email: Optional[str] = Field(None, description="User email address for OTP delivery")
+    identifier: Optional[str] = Field(None, description="Email alias for backwards compatibility")
+
+    @model_validator(mode="after")
+    def validate_email(self):
+        target = (self.email or self.identifier or "").strip().lower()
+        if not target:
+            raise ValueError("Email address is required to receive verification OTP.")
+        if "@" not in target:
+            raise ValueError("Please provide a valid email address.")
+        self.email = target
+        self.identifier = target
+        return self
 
 class SendOTPResponse(BaseModel):
     success: bool
-    identifier: str
-    channel: str
+    email: str
     is_new_user: bool
     message: str
     debug_otp: Optional[str] = Field(None, description="Available in development mode for easy testing")
 
 class VerifyOTPRequest(BaseModel):
     """
-    Step 2: Validate the 6-digit OTP received via SMS or Email.
+    Step 2: Validate the 6-digit OTP received via Email.
     """
-    identifier: str = Field(..., description="Mobile phone number or email address that received the OTP")
+    email: Optional[str] = Field(None, description="Email address that received the OTP")
+    identifier: Optional[str] = Field(None, description="Email alias for backwards compatibility")
     otp: str = Field(..., min_length=6, max_length=6, description="6-digit verification code")
+
+    @model_validator(mode="after")
+    def validate_email(self):
+        target = (self.email or self.identifier or "").strip().lower()
+        if not target:
+            raise ValueError("Email address is required for OTP verification.")
+        self.email = target
+        self.identifier = target
+        return self
 
 class PublicRegisterRequest(BaseModel):
     """
     Profile registration for Public users / volunteers.
-    Minimal, frictionless data entry.
+    Minimal, frictionless data entry with email-based authentication.
     """
+    email: str = Field(..., min_length=3, max_length=255, description="User email address (used for login)")
     first_name: str = Field(..., min_length=1, max_length=100, description="User's given first name")
     last_name: str = Field(..., min_length=1, max_length=100, description="User's family surname")
-    phone_number: Optional[str] = Field(None, description="Primary contact phone number")
-    email: Optional[str] = Field(None, description="Optional email address")
+    phone_number: Optional[str] = Field(None, description="Optional contact phone number")
     skills: List[str] = Field(default_factory=list, description="Selected predefined skills plus user's custom skills")
     equipment: List[str] = Field(default_factory=list, description="Available rescue/relief equipment items")
     avatar: Optional[str] = Field(None, description="Avatar image URL")
     gender: Optional[str] = Field(None, description="Gender (e.g. Male, Female, Other, Prefer not to say)")
 
     @model_validator(mode="after")
-    def check_phone_or_email(self):
-        if not self.phone_number and not self.email:
-            raise ValueError("At least one contact method (phone number or email) is required.")
+    def validate_email_format(self):
+        target = self.email.strip().lower()
+        if "@" not in target:
+            raise ValueError("Please provide a valid email address.")
+        self.email = target
         return self
 
 class FieldworkerRegisterRequest(BaseModel):
@@ -50,10 +72,10 @@ class FieldworkerRegisterRequest(BaseModel):
     Profile registration for Fieldworkers.
     Includes personal verification (NID, address, gender, DOB) and experience certificates.
     """
+    email: str = Field(..., min_length=3, max_length=255, description="Fieldworker email address (used for login)")
     first_name: str = Field(..., min_length=1, max_length=100, description="Fieldworker's first name")
     last_name: str = Field(..., min_length=1, max_length=100, description="Fieldworker's last name")
-    phone_number: Optional[str] = Field(None, description="Primary contact phone number")
-    email: Optional[str] = Field(None, description="Optional email address")
+    phone_number: Optional[str] = Field(None, description="Optional contact phone number")
     skills: List[str] = Field(default_factory=list, description="Predefined and custom skills")
     equipment: List[str] = Field(default_factory=list, description="Equipments available with fieldworker")
     avatar: Optional[str] = Field(None, description="Profile avatar URL")
@@ -66,10 +88,13 @@ class FieldworkerRegisterRequest(BaseModel):
     experience_certificate: Optional[str] = Field(None, description="URL or description of certified training / rescue credentials")
 
     @model_validator(mode="after")
-    def check_phone_or_email(self):
-        if not self.phone_number and not self.email:
-            raise ValueError("At least one contact method (phone number or email) is required.")
+    def validate_email_format(self):
+        target = self.email.strip().lower()
+        if "@" not in target:
+            raise ValueError("Please provide a valid email address.")
+        self.email = target
         return self
+
 
 class AuthUser(BaseModel):
     id: str

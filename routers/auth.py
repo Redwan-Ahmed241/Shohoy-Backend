@@ -64,41 +64,32 @@ def get_current_user_from_token(
     return AuthUser(**user_data)
 
 
-# ── 1. SEND OTP (Phone via Twilio / Email via Resend) ──
+# ── 1. SEND OTP (Exclusively Email via Resend) ──
 @router.post(
     "/send-otp",
     response_model=SendOTPResponse,
-    summary="Send OTP to phone (Twilio) or email (Resend)"
+    summary="Send verification OTP to user email via Resend"
 )
 def send_otp(request: SendOTPRequest, db: Optional[Session] = Depends(get_db)):
     """
-    Dispatches a 6-digit security OTP to the user's mobile number or email address.
-    - If phone number: Dispatched via Twilio SMS.
-    - If email address: Dispatched via Resend with a responsive HTML template.
-    - If API keys are not yet configured, automatically logs the OTP and returns debug_otp in development.
+    Dispatches a 6-digit security OTP code to the user's email address via Resend.
+    - If API key is not configured, automatically logs the OTP and returns debug_otp in development.
     """
-    clean_id = request.identifier.strip()
-    channel = request.channel
-
-    if channel == "auto" or not channel:
-        channel = "email" if "@" in clean_id else "phone"
+    clean_email = (request.email or request.identifier or "").strip().lower()
 
     # Check if user already exists
     if db is not None:
-        existing_user = supabase_repo.get_user_by_identifier(db, clean_id)
+        existing_user = supabase_repo.get_user_by_email(db, clean_email)
     else:
-        existing_user = mem_db.get_user_by_identifier(clean_id)
+        existing_user = mem_db.get_user_by_email(clean_email)
 
     is_new = (existing_user is None)
 
-    # Generate OTP code
-    otp = otp_service.generate_otp(clean_id, channel=channel)
+    # Generate 6-digit OTP code
+    otp = otp_service.generate_otp(clean_email, channel="email")
 
-    # Dispatch via Twilio or Resend
-    if channel == "phone":
-        dispatch_result = sms_service.send_otp_sms(clean_id, otp)
-    else:
-        dispatch_result = email_service.send_otp_email(clean_id, otp)
+    # Dispatch via Resend Email
+    dispatch_result = email_service.send_otp_email(clean_email, otp)
 
     # In development or if keys not configured, surface OTP for developer convenience
     is_mock = dispatch_result.get("provider") == "mock" or config.ENVIRONMENT in ("development", "test")
@@ -106,10 +97,9 @@ def send_otp(request: SendOTPRequest, db: Optional[Session] = Depends(get_db)):
 
     return SendOTPResponse(
         success=True,
-        identifier=clean_id,
-        channel=channel,
+        email=clean_email,
         is_new_user=is_new,
-        message=f"OTP dispatched to {clean_id} via {channel.capitalize()} ({dispatch_result.get('provider')}).",
+        message=f"OTP successfully dispatched to {clean_email} via Resend.",
         debug_otp=debug_otp
     )
 
@@ -118,16 +108,16 @@ def send_otp(request: SendOTPRequest, db: Optional[Session] = Depends(get_db)):
 @router.post(
     "/verify-otp",
     response_model=AuthResponse,
-    summary="Verify OTP code and authenticate or advance to profile creation"
+    summary="Verify Email OTP code and authenticate or advance to registration"
 )
 def verify_otp(request: VerifyOTPRequest, db: Optional[Session] = Depends(get_db)):
     """
-    Validates the 6-digit OTP:
+    Validates the 6-digit OTP received via email:
     - If user exists: Issues persistent session bearer token and returns profile.
     - If user is new: Returns a temporary verification ticket to complete registration.
     """
-    clean_id = request.identifier.strip()
-    is_valid, msg = otp_service.verify_otp(clean_id, request.otp)
+    clean_email = (request.email or request.identifier or "").strip().lower()
+    is_valid, msg = otp_service.verify_otp(clean_email, request.otp)
 
     if not is_valid:
         raise HTTPException(
@@ -135,20 +125,20 @@ def verify_otp(request: VerifyOTPRequest, db: Optional[Session] = Depends(get_db
             detail=msg
         )
 
-    # Find existing account
+    # Find existing account by email
     if db is not None:
-        user_data = supabase_repo.get_user_by_identifier(db, clean_id)
+        user_data = supabase_repo.get_user_by_email(db, clean_email)
     else:
-        user_data = mem_db.get_user_by_identifier(clean_id)
+        user_data = mem_db.get_user_by_email(clean_email)
 
     if user_data:
         token = otp_service.create_token({
             "sub": user_data["id"],
             "role": user_data.get("role", "public"),
-            "phone": user_data.get("phoneNumber") or user_data.get("phone_number"),
-            "email": user_data.get("email")
+            "email": user_data.get("email"),
+            "phone": user_data.get("phoneNumber") or user_data.get("phone_number")
         })
-        otp_service.clear_otp(clean_id)
+        otp_service.clear_otp(clean_email)
         return AuthResponse(
             success=True,
             is_new_user=False,
@@ -159,7 +149,7 @@ def verify_otp(request: VerifyOTPRequest, db: Optional[Session] = Depends(get_db
     else:
         # New user: generate registration ticket
         ticket = otp_service.create_token({
-            "sub": clean_id,
+            "sub": clean_email,
             "scope": "registration"
         }, expire_days=1)
 
@@ -169,8 +159,9 @@ def verify_otp(request: VerifyOTPRequest, db: Optional[Session] = Depends(get_db
             user=None,
             token=None,
             verification_ticket=ticket,
-            message="OTP verified successfully. Please complete your registration profile."
+            message="Email OTP verified successfully. Please complete your registration profile."
         )
+
 
 
 # ── 3. REGISTER: PUBLIC USER ──
@@ -188,15 +179,14 @@ def register_public(request: PublicRegisterRequest, db: Optional[Session] = Depe
     - Equipment (predefined + custom)
     - Avatar, gender
     """
-    # Check if user already exists
-    identifier = request.phone_number or request.email or ""
-    if identifier:
-        existing = supabase_repo.get_user_by_identifier(db, identifier) if db is not None else mem_db.get_user_by_identifier(identifier)
-        if existing:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"An account with this phone or email already exists."
-            )
+    # Check if user with this email already exists
+    clean_email = request.email.strip().lower()
+    existing = supabase_repo.get_user_by_email(db, clean_email) if db is not None else mem_db.get_user_by_email(clean_email)
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"An account with this email address already exists."
+        )
 
     avatar_url = request.avatar or f"https://api.dicebear.com/7.x/initials/svg?seed={request.first_name}+{request.last_name}"
 
@@ -205,7 +195,7 @@ def register_public(request: PublicRegisterRequest, db: Optional[Session] = Depe
         "first_name": request.first_name.strip(),
         "last_name": request.last_name.strip(),
         "phone_number": request.phone_number.strip() if request.phone_number else None,
-        "email": request.email.strip().lower() if request.email else None,
+        "email": clean_email,
         "avatar": avatar_url,
         "gender": request.gender,
         "skills": request.skills,
@@ -225,8 +215,8 @@ def register_public(request: PublicRegisterRequest, db: Optional[Session] = Depe
     token = otp_service.create_token({
         "sub": created_user["id"],
         "role": "public",
-        "phone": created_user.get("phoneNumber") or created_user.get("phone_number"),
-        "email": created_user.get("email")
+        "email": created_user.get("email"),
+        "phone": created_user.get("phoneNumber") or created_user.get("phone_number")
     })
 
     return AuthResponse(
@@ -251,14 +241,13 @@ def register_fieldworker(request: FieldworkerRegisterRequest, db: Optional[Sessi
     - Same as public profile (name, phone, mail, skills, equipment, avatar, gender)
     - Plus: NID number, residential address, Date of Birth (DOB), and optional experience certificate.
     """
-    identifier = request.phone_number or request.email or ""
-    if identifier:
-        existing = supabase_repo.get_user_by_identifier(db, identifier) if db is not None else mem_db.get_user_by_identifier(identifier)
-        if existing:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"An account with this phone or email already exists."
-            )
+    clean_email = request.email.strip().lower()
+    existing = supabase_repo.get_user_by_email(db, clean_email) if db is not None else mem_db.get_user_by_email(clean_email)
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"An account with this email address already exists."
+        )
 
     avatar_url = request.avatar or f"https://api.dicebear.com/7.x/initials/svg?seed={request.first_name}+{request.last_name}"
 
@@ -267,7 +256,7 @@ def register_fieldworker(request: FieldworkerRegisterRequest, db: Optional[Sessi
         "first_name": request.first_name.strip(),
         "last_name": request.last_name.strip(),
         "phone_number": request.phone_number.strip() if request.phone_number else None,
-        "email": request.email.strip().lower() if request.email else None,
+        "email": clean_email,
         "avatar": avatar_url,
         "gender": request.gender,
         "skills": request.skills,
@@ -362,6 +351,8 @@ def update_profile(
 
 
 # ── 8. LEGACY COMPATIBILITY ──
-@router.post("/login", summary="Legacy telephone login endpoint")
+@router.post("/login", summary="Legacy login endpoint")
 def legacy_login(request: LoginRequest, db: Optional[Session] = Depends(get_db)):
-    return send_otp(SendOTPRequest(identifier=request.phone, channel="phone"), db=db)
+    target = request.phone if "@" in request.phone else f"{request.phone}@example.com"
+    return send_otp(SendOTPRequest(email=target), db=db)
+

@@ -141,35 +141,28 @@ assert "Male" in opts["genders"]
 assert "fieldworker" in opts["roles"]
 print(f"[PASS] GET /api/auth/options passed: {len(opts['skills'])} skills, {len(opts['equipment'])} equipment items")
 
-# 9b. Send OTP via Phone (Twilio)
-phone_res = client.post("/api/auth/send-otp", json={"identifier": "01712345678", "channel": "phone"})
-assert phone_res.status_code == 200, f"Send OTP phone failed: {phone_res.text}"
-phone_data = phone_res.json()
-assert phone_data["channel"] == "phone"
-assert phone_data["debug_otp"] is not None
-print(f"[PASS] POST /api/auth/send-otp (Phone/Twilio) passed: OTP={phone_data['debug_otp']}")
-
-# 9c. Send OTP via Email (Resend)
-email_res = client.post("/api/auth/send-otp", json={"identifier": "volunteer@shohay.org", "channel": "email"})
+# 9b. Send OTP via Email (Resend)
+email_res = client.post("/api/auth/send-otp", json={"email": "rahim.ahmed@example.com"})
 assert email_res.status_code == 200, f"Send OTP email failed: {email_res.text}"
 email_data = email_res.json()
-assert email_data["channel"] == "email"
+assert email_data["email"] == "rahim.ahmed@example.com"
 assert email_data["debug_otp"] is not None
 print(f"[PASS] POST /api/auth/send-otp (Email/Resend) passed: OTP={email_data['debug_otp']}")
 
-# 9d. Verify OTP with invalid code
-invalid_res = client.post("/api/auth/verify-otp", json={"identifier": "01712345678", "otp": "000000"})
+# 9c. Verify OTP with invalid code
+invalid_res = client.post("/api/auth/verify-otp", json={"email": "rahim.ahmed@example.com", "otp": "000000"})
 assert invalid_res.status_code == 400
 print("[PASS] POST /api/auth/verify-otp invalid code rejected as expected")
 
-# 9e. Verify OTP for existing user -> logs in
-verify_res = client.post("/api/auth/verify-otp", json={"identifier": "01712345678", "otp": phone_data["debug_otp"]})
+# 9d. Verify OTP for existing user -> logs in and returns bearer token
+verify_res = client.post("/api/auth/verify-otp", json={"email": "rahim.ahmed@example.com", "otp": email_data["debug_otp"]})
 assert verify_res.status_code == 200, f"Verify existing user failed: {verify_res.text}"
 auth_data = verify_res.json()
 assert auth_data["is_new_user"] is False
 assert auth_data["token"] is not None
 auth_token = auth_data["token"]
 print("[PASS] POST /api/auth/verify-otp (Existing User) passed, token issued for:", auth_data["user"]["first_name"])
+
 
 # 9f. Register new Public User
 new_public_phone = "01999888777"
