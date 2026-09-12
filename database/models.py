@@ -134,3 +134,29 @@ class WarehouseItemModel(Base):
     warehouse_name: Mapped[str] = mapped_column(String(255), nullable=False)
     last_count_date: Mapped[str] = mapped_column(String(50), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class UserModel(Base):
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    role: Mapped[str] = mapped_column(String(20), index=True, default="public")  # "public" or "fieldworker"
+    first_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    last_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    phone_number: Mapped[Optional[str]] = mapped_column(String(50), index=True, nullable=True)
+    email: Mapped[Optional[str]] = mapped_column(String(255), index=True, nullable=True)
+    avatar: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    gender: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    skills: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    equipment: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    
+    # Fieldworker-specific personal verification fields
+    nid_number: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    address: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    dob: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    experience_certificate: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    verification_status: Mapped[str] = mapped_column(String(50), default="Pending")
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+

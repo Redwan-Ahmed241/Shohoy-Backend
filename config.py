@@ -28,6 +28,22 @@ SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "")
 # Otherwise, falls back gracefully to in-memory mock storage.
 USE_SUPABASE = bool(SUPABASE_DB_URL)
 
+# ── Authentication & OTP Configuration ──
+OTP_EXPIRATION_SECONDS = int(os.getenv("OTP_EXPIRATION_SECONDS", "300"))  # 5 minutes
+JWT_SECRET = os.getenv("JWT_SECRET", SECRET_KEY)
+TOKEN_EXPIRATION_DAYS = int(os.getenv("TOKEN_EXPIRATION_DAYS", "30"))
+
+# ── Twilio Configuration (SMS OTP for phone login) ──
+TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "").strip()
+TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "").strip()
+TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER", "").strip()
+TWILIO_CONFIGURED = bool(TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and TWILIO_PHONE_NUMBER)
+
+# ── Resend Configuration (Email OTP for email login) ──
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "").strip()
+RESEND_FROM_EMAIL = os.getenv("RESEND_FROM_EMAIL", "Shohay Emergency <onboarding@resend.dev>").strip()
+RESEND_CONFIGURED = bool(RESEND_API_KEY)
+
 # ── App Metadata ──
 PROJECT_NAME = "Shohay Flood Relief & Disaster Response API"
 API_V1_PREFIX = "/api"
