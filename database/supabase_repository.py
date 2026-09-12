@@ -271,6 +271,29 @@ class SupabaseRepository:
         r = db.query(AssistanceRequestModel).filter(AssistanceRequestModel.tracking_id == clean_id).first()
         return request_to_dict(r) if r else None
 
+    def get_all_requests(self, db: Session, status: Optional[str] = None, district: Optional[str] = None) -> List[Dict[str, Any]]:
+        query = db.query(AssistanceRequestModel)
+        if status and status != "All":
+            query = query.filter(AssistanceRequestModel.status.ilike(status))
+        records = query.order_by(AssistanceRequestModel.created_at.desc()).all()
+        if district and district != "All":
+            d = district.lower()
+            records = [r for r in records if str((r.location or {}).get("district", "")).lower() == d]
+        return [request_to_dict(r) for r in records]
+
+    def update_request_status(self, db: Session, request_id: str, new_status: str, notes: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        r = db.query(AssistanceRequestModel).filter(
+            (AssistanceRequestModel.id == request_id) | (AssistanceRequestModel.tracking_id == request_id)
+        ).first()
+        if not r:
+            return None
+        r.status = new_status
+        if notes:
+            r.notes = (r.notes or "") + f" | {notes}"
+        db.commit()
+        db.refresh(r)
+        return request_to_dict(r)
+
     # ── CAMPAIGNS ──
     def get_campaigns(self, db: Session) -> List[Dict[str, Any]]:
         return [campaign_to_dict(c) for c in db.query(CampaignModel).all()]
@@ -326,6 +349,41 @@ class SupabaseRepository:
             db.commit()
             return True
         return False
+
+    def get_all_volunteers(self, db: Session) -> List[Dict[str, Any]]:
+        users = db.query(UserModel).filter(UserModel.role.in_(["fieldworker", "volunteer"])).order_by(UserModel.created_at.desc()).all()
+        return [user_to_dict(u) for u in users]
+
+    def create_assignment(self, db: Session, data: Dict[str, Any]) -> Dict[str, Any]:
+        assignment_id = f"assign-{int(datetime.now().timestamp() * 1000)}"
+        a = VolunteerAssignmentModel(
+            id=assignment_id,
+            title=data.get("title", "Emergency Relief Dispatch"),
+            location=data.get("location", "Field Station"),
+            district=data.get("district", "Sunamganj"),
+            duration_hours=data.get("durationHours") or data.get("duration_hours", 4),
+            team_size=data.get("teamSize") or data.get("team_size", 4),
+            priority=data.get("priority", "high"),
+            status="Available"
+        )
+        db.add(a)
+        db.commit()
+        db.refresh(a)
+        return assignment_to_dict(a)
+
+    def checkin_volunteer(self, db: Session, status: str = "Checked In", hours: int = 1) -> Dict[str, Any]:
+        v = db.query(VolunteerProfileModel).first()
+        if v:
+            if status == "Checked In":
+                v.is_available = True
+                v.hours_logged = (v.hours_logged or 0) + hours
+            elif status == "Completed":
+                v.tasks_completed = (v.tasks_completed or 0) + 1
+                v.hours_logged = (v.hours_logged or 0) + hours
+            db.commit()
+            db.refresh(v)
+            return volunteer_profile_to_dict(v)
+        return {"status": status, "hoursLogged": hours}
 
     # ── WAREHOUSE ──
     def get_warehouse_inventory(self, db: Session, category: Optional[str] = None) -> List[Dict[str, Any]]:

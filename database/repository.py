@@ -108,6 +108,23 @@ class InMemoryDatabase:
         clean_id = tracking_id.strip().upper()
         return self.requests_db.get(clean_id)
 
+    def get_all_requests(self, status: Optional[str] = None, district: Optional[str] = None) -> List[Dict[str, Any]]:
+        results = list(self.requests_db.values())
+        if status and status != "All":
+            results = [r for r in results if r.get("status", "").lower() == status.lower()]
+        if district and district != "All":
+            results = [r for r in results if (r.get("location") or {}).get("district", "").lower() == district.lower()]
+        return sorted(results, key=lambda x: x.get("createdAt", ""), reverse=True)
+
+    def update_request_status(self, request_id: str, new_status: str, notes: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        for r in self.requests_db.values():
+            if r.get("id") == request_id or r.get("trackingId") == request_id:
+                r["status"] = new_status
+                if notes:
+                    r["notes"] = (r.get("notes") or "") + f" | {notes}"
+                return r
+        return None
+
     # ── CAMPAIGNS ──
     def get_campaigns(self) -> List[Dict[str, Any]]:
         return list(self.campaigns)
@@ -144,6 +161,35 @@ class InMemoryDatabase:
                 a['status'] = new_status
                 return True
         return False
+
+    def get_all_volunteers(self) -> List[Dict[str, Any]]:
+        volunteers = [u for u in self.users.values() if u.get("role") in ("volunteer", "fieldworker")]
+        return volunteers
+
+    def create_assignment(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        assignment_id = f"assign-{len(self.volunteer_assignments) + 1}"
+        new_assign = {
+            "id": assignment_id,
+            "title": data.get("title", "Emergency Relief Dispatch"),
+            "location": data.get("location", "Field Station"),
+            "district": data.get("district", "Sunamganj"),
+            "durationHours": data.get("durationHours") or data.get("duration_hours", 4),
+            "teamSize": data.get("teamSize") or data.get("team_size", 4),
+            "priority": data.get("priority", "high"),
+            "status": "Available"
+        }
+        self.volunteer_assignments.append(new_assign)
+        return new_assign
+
+    def checkin_volunteer(self, status: str = "Checked In", hours: int = 1) -> Dict[str, Any]:
+        p = self.volunteer_profile
+        if status == "Checked In":
+            p["isAvailable"] = True
+            p["hoursLogged"] = p.get("hoursLogged", 0) + hours
+        elif status == "Completed":
+            p["tasksCompleted"] = p.get("tasksCompleted", 0) + 1
+            p["hoursLogged"] = p.get("hoursLogged", 0) + hours
+        return p
 
     # ── WAREHOUSE ──
     def get_warehouse_inventory(self, category: Optional[str] = None) -> List[Dict[str, Any]]:

@@ -1,5 +1,6 @@
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, HTTPException, status, Depends
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from schemas.volunteers import VolunteerProfile, VolunteerAssignment
 from database.connection import get_db
@@ -7,6 +8,30 @@ from database.supabase_repository import supabase_repo
 from database.repository import db as mem_db
 
 router = APIRouter(prefix="/volunteers", tags=["Volunteer Operations"])
+
+class AssignmentCreatePayload(BaseModel):
+    title: str
+    location: str
+    district: str
+    durationHours: int = 4
+    teamSize: int = 4
+    priority: str = "high"
+
+class CheckInPayload(BaseModel):
+    status: str = "Checked In"
+    hours: int = 1
+
+@router.get("", summary="List all registered field volunteers")
+def list_volunteers(db: Optional[Session] = Depends(get_db)):
+    """Fetches all registered volunteers with their status, contact details, and skills for Admin."""
+    if db is not None:
+        volunteers = supabase_repo.get_all_volunteers(db)
+    else:
+        volunteers = mem_db.get_all_volunteers()
+    return {
+        "count": len(volunteers),
+        "volunteers": volunteers
+    }
 
 @router.get("/profile", response_model=VolunteerProfile, summary="Get logged-in volunteer profile")
 def get_volunteer_profile(db: Optional[Session] = Depends(get_db)):
@@ -21,6 +46,13 @@ def get_open_assignments(db: Optional[Session] = Depends(get_db)):
     if db is not None:
         return supabase_repo.get_open_assignments(db)
     return mem_db.get_open_assignments()
+
+@router.post("/assignments", response_model=VolunteerAssignment, status_code=status.HTTP_201_CREATED, summary="Create new field assignment")
+def create_field_assignment(payload: AssignmentCreatePayload, db: Optional[Session] = Depends(get_db)):
+    """Admin dispatches a new response assignment."""
+    if db is not None:
+        return supabase_repo.create_assignment(db, payload.model_dump())
+    return mem_db.create_assignment(payload.model_dump())
 
 @router.post("/assignments/{assignment_id}/accept", summary="Accept volunteer assignment")
 def accept_assignment(assignment_id: str, db: Optional[Session] = Depends(get_db)):
@@ -45,3 +77,10 @@ def decline_assignment(assignment_id: str, db: Optional[Session] = Depends(get_d
     else:
         mem_db.update_assignment_status(assignment_id, "Available")
     return {"success": True, "assignmentId": assignment_id, "status": "Available"}
+
+@router.post("/checkin", summary="Volunteer check-in and duty hours tracking")
+def volunteer_checkin(payload: CheckInPayload, db: Optional[Session] = Depends(get_db)):
+    """Records on-duty check-in or completion and logs active volunteer hours."""
+    if db is not None:
+        return supabase_repo.checkin_volunteer(db, status=payload.status, hours=payload.hours)
+    return mem_db.checkin_volunteer(status=payload.status, hours=payload.hours)
