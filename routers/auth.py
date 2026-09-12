@@ -91,17 +91,24 @@ def send_otp(request: SendOTPRequest, db: Optional[Session] = Depends(get_db)):
     # Dispatch via Resend Email
     dispatch_result = email_service.send_otp_email(clean_email, otp)
 
-    # In development or if keys not configured, surface OTP for developer convenience
-    is_mock = dispatch_result.get("provider") == "mock" or config.ENVIRONMENT in ("development", "test")
-    debug_otp = otp if is_mock else None
+    # In development or if delivery is restricted by sandbox, surface OTP for developer convenience
+    is_dev = config.ENVIRONMENT in ("development", "test")
+    delivered = dispatch_result.get("success", False)
+    debug_otp = otp if is_dev or not delivered else None
+
+    if delivered:
+        msg = f"OTP successfully dispatched to {clean_email} via Resend."
+    else:
+        msg = f"Verification code generated. Use code '{otp}' to test sign-in in development."
 
     return SendOTPResponse(
         success=True,
         email=clean_email,
         is_new_user=is_new,
-        message=f"OTP successfully dispatched to {clean_email} via Resend.",
+        message=msg,
         debug_otp=debug_otp
     )
+
 
 
 # ── 2. VERIFY OTP ──

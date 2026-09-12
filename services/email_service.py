@@ -1,3 +1,4 @@
+import os
 import logging
 import httpx
 from typing import Dict, Any
@@ -11,9 +12,18 @@ class EmailService:
     Sends one-time security codes (OTP) to user email addresses with responsive HTML styling.
     """
 
-    def __init__(self):
-        self.api_key = config.RESEND_API_KEY
-        self.from_email = config.RESEND_FROM_EMAIL
+    @property
+    def api_key(self) -> str:
+        return os.getenv("RESEND_API_KEY", config.RESEND_API_KEY).strip()
+
+    @property
+    def from_email(self) -> str:
+        return os.getenv("RESEND_FROM_EMAIL", config.RESEND_FROM_EMAIL).strip()
+
+    @property
+    def is_configured(self) -> bool:
+        return bool(self.api_key)
+
 
     def _render_otp_html(self, otp: str) -> str:
         minutes = config.OTP_EXPIRATION_SECONDS // 60
@@ -80,7 +90,7 @@ class EmailService:
         """
         clean_email = to_email.strip().lower()
 
-        if not config.RESEND_CONFIGURED:
+        if not self.is_configured:
             print(f"\n📧 [RESEND DEV MOCK] Email to {clean_email}:")
             print(f"   Subject: \"[Shohay] Your Login Code: {otp}\"")
             print(f"   -> OTP: {otp}\n")
@@ -120,21 +130,30 @@ class EmailService:
                 else:
                     err_msg = f"Resend API Error {response.status_code}: {response.text}"
                     logger.error(err_msg)
+                    # Friendly developer console log for Resend Sandbox restrictions
+                    print(f"\n⚠️ [RESEND SANDBOX NOTICE] Could not send live email to '{clean_email}'.")
+                    print(f"   Reason: Resend sandbox without custom domain only delivers to your registered account email.")
+                    print(f"   🔑 [DEV OTP]: {otp} (Use this OTP to complete sign-in/registration in development!)\n")
                     return {
                         "success": False,
                         "provider": "resend",
                         "error": err_msg,
-                        "message": "Failed to send email via Resend."
+                        "fallback_otp": otp,
+                        "message": f"Resend sandbox notice: Use test OTP '{otp}' in development."
                     }
         except Exception as exc:
             err_msg = f"Failed connecting to Resend: {str(exc)}"
             logger.error(err_msg)
+            print(f"\n⚠️ [RESEND CONNECTION ERROR]: {err_msg}")
+            print(f"   🔑 [DEV OTP]: {otp}\n")
             return {
                 "success": False,
                 "provider": "resend",
                 "error": err_msg,
+                "fallback_otp": otp,
                 "message": "Resend connection error."
             }
+
 
 
 email_service = EmailService()
