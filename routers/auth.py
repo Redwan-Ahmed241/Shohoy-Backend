@@ -190,9 +190,32 @@ def register_public(request: PublicRegisterRequest, db: Optional[Session] = Depe
     clean_email = request.email.strip().lower()
     existing = supabase_repo.get_user_by_email(db, clean_email) if db is not None else mem_db.get_user_by_email(clean_email)
     if existing:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"An account with this email address already exists."
+        update_data = {
+            "first_name": request.first_name.strip(),
+            "last_name": request.last_name.strip(),
+            "phone_number": request.phone_number.strip() if request.phone_number else existing.get("phone_number"),
+            "skills": request.skills or existing.get("skills", []),
+            "equipment": request.equipment or existing.get("equipment", []),
+            "gender": request.gender or existing.get("gender"),
+            "avatar": request.avatar or existing.get("avatar")
+        }
+        if db is not None:
+            updated_user = supabase_repo.update_user(db, existing["id"], update_data) or existing
+        else:
+            updated_user = mem_db.update_user(existing["id"], update_data) or existing
+
+        token = otp_service.create_token({
+            "sub": updated_user["id"],
+            "role": updated_user.get("role", "public"),
+            "email": updated_user.get("email"),
+            "phone": updated_user.get("phoneNumber") or updated_user.get("phone_number")
+        })
+        return AuthResponse(
+            success=True,
+            is_new_user=False,
+            user=AuthUser(**updated_user),
+            token=token,
+            message="Profile updated and signed in successfully."
         )
 
     avatar_url = request.avatar or f"https://api.dicebear.com/7.x/initials/svg?seed={request.first_name}+{request.last_name}"
@@ -251,9 +274,32 @@ def register_fieldworker(request: FieldworkerRegisterRequest, db: Optional[Sessi
     clean_email = request.email.strip().lower()
     existing = supabase_repo.get_user_by_email(db, clean_email) if db is not None else mem_db.get_user_by_email(clean_email)
     if existing:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"An account with this email address already exists."
+        update_data = {
+            "first_name": request.first_name.strip(),
+            "last_name": request.last_name.strip(),
+            "phone_number": request.phone_number.strip() if request.phone_number else existing.get("phone_number"),
+            "skills": request.skills or existing.get("skills", []),
+            "equipment": request.equipment or existing.get("equipment", []),
+            "gender": request.gender or existing.get("gender"),
+            "avatar": request.avatar or existing.get("avatar")
+        }
+        if db is not None:
+            updated_user = supabase_repo.update_user(db, existing["id"], update_data) or existing
+        else:
+            updated_user = mem_db.update_user(existing["id"], update_data) or existing
+
+        token = otp_service.create_token({
+            "sub": updated_user["id"],
+            "role": updated_user.get("role", "public"),
+            "email": updated_user.get("email"),
+            "phone": updated_user.get("phoneNumber") or updated_user.get("phone_number")
+        })
+        return AuthResponse(
+            success=True,
+            is_new_user=False,
+            user=AuthUser(**updated_user),
+            token=token,
+            message="Profile updated and signed in successfully."
         )
 
     avatar_url = request.avatar or f"https://api.dicebear.com/7.x/initials/svg?seed={request.first_name}+{request.last_name}"
@@ -357,9 +403,119 @@ def update_profile(
     return AuthUser(**updated)
 
 
-# ── 8. LEGACY COMPATIBILITY ──
-@router.post("/login", summary="Legacy login endpoint")
-def legacy_login(request: LoginRequest, db: Optional[Session] = Depends(get_db)):
-    target = request.phone if "@" in request.phone else f"{request.phone}@example.com"
-    return send_otp(SendOTPRequest(email=target), db=db)
 
+# ─── 8. DIRECT DATABASE LOGIN (NO VERIFICATION BARRIER) ───
+@router.post("/login", response_model=AuthResponse, summary="Direct Database Authentication")
+def direct_login(request: LoginRequest, db: Optional[Session] = Depends(get_db)):
+    """
+    Authenticates directly against the database with zero OTP/email verification barriers.
+    - If user exists in DB: Returns user profile and persistent JWT token.
+    - If user does NOT exist: Automatically provisions the user in the database with the requested role.
+    """
+    target = (request.email or request.phone or request.identifier or "").strip().lower()
+    if not target:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Please provide an email or mobile number to sign in."
+        )
+
+    # Search in database by email, phone, or identifier
+    user_data = None
+    if db is not None:
+        user_data = (
+            supabase_repo.get_user_by_email(db, target)
+            or supabase_repo.get_user_by_phone(db, target)
+            or supabase_repo.get_user_by_identifier(db, target)
+        )
+    else:
+        user_data = (
+            mem_db.get_user_by_email(target)
+            or mem_db.get_user_by_phone(target)
+            or mem_db.get_user_by_identifier(target)
+        )
+
+    if user_data:
+        req_role = (request.role or "").strip().lower()
+        if req_role in ("admin", "volunteer", "fieldworker") and user_data.get("role") != req_role:
+            db_role = "fieldworker" if req_role == "volunteer" else req_role
+            if db is not None:
+                updated = supabase_repo.update_user(db, user_data["id"], {"role": db_role})
+                if updated:
+                    user_data = updated
+            else:
+                user_data["role"] = db_role
+
+        token = otp_service.create_token({
+            "sub": user_data["id"],
+            "role": user_data.get("role", "public"),
+            "email": user_data.get("email"),
+            "phone": user_data.get("phoneNumber") or user_data.get("phone_number")
+        })
+
+        return AuthResponse(
+            success=True,
+            is_new_user=False,
+            user=AuthUser(**user_data),
+            token=token,
+            message="Sign in successful. Welcome to Shohay."
+        )
+
+    # If user does not exist, provision in DB
+    is_email = "@" in target
+    email_val = target if is_email else None
+    phone_val = target if not is_email else None
+
+    chosen_role = (request.role or "public").strip().lower()
+    if chosen_role in ("volunteer", "fieldworker"):
+        db_role = "fieldworker"
+        def_first, def_last = "Field", "Volunteer"
+    elif chosen_role == "admin":
+        db_role = "admin"
+        def_first, def_last = "District", "Coordinator"
+    else:
+        db_role = "public"
+        def_first, def_last = "Public", "Citizen"
+
+    if request.name:
+        parts = request.name.strip().split(" ", 1)
+        def_first = parts[0]
+        def_last = parts[1] if len(parts) > 1 else ""
+
+    avatar_url = f"https://api.dicebear.com/7.x/initials/svg?seed={def_first}+{def_last}"
+
+    user_payload = {
+        "role": db_role,
+        "first_name": def_first,
+        "last_name": def_last,
+        "phone_number": phone_val,
+        "email": email_val,
+        "avatar": avatar_url,
+        "gender": "Other",
+        "skills": ["First Aid & CPR", "Food & Relief Distribution"] if db_role in ("fieldworker", "admin") else [],
+        "equipment": ["Life Jackets & Buoys"] if db_role in ("fieldworker", "admin") else [],
+        "nid_number": None,
+        "address": "Bangladesh",
+        "dob": None,
+        "experience_certificate": None,
+        "verification_status": "Verified"
+    }
+
+    if db is not None:
+        created_user = supabase_repo.create_user(db, user_payload)
+    else:
+        created_user = mem_db.create_user(user_payload)
+
+    token = otp_service.create_token({
+        "sub": created_user["id"],
+        "role": created_user.get("role", db_role),
+        "email": created_user.get("email"),
+        "phone": created_user.get("phoneNumber") or created_user.get("phone_number")
+    })
+
+    return AuthResponse(
+        success=True,
+        is_new_user=True,
+        user=AuthUser(**created_user),
+        token=token,
+        message="Account created and signed in successfully."
+    )

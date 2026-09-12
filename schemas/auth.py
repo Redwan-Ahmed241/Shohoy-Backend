@@ -168,8 +168,11 @@ class AuthOptionsResponse(BaseModel):
 
 # Backwards compatibility models
 class LoginRequest(BaseModel):
-    phone: str
-    role: UserRole = "public"
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    identifier: Optional[str] = None
+    role: Optional[str] = "public"
+    name: Optional[str] = None
 
 class OTPVerifyRequest(BaseModel):
     phone: str
