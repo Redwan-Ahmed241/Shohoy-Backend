@@ -8,6 +8,7 @@ from routers import (
     shelters_router,
     requests_router,
     campaigns_router,
+    donations_router,
     contacts_router,
     volunteers_router,
     warehouse_router,
@@ -48,6 +49,7 @@ app.include_router(alerts_router, prefix=config.API_V1_PREFIX)
 app.include_router(shelters_router, prefix=config.API_V1_PREFIX)
 app.include_router(requests_router, prefix=config.API_V1_PREFIX)
 app.include_router(campaigns_router, prefix=config.API_V1_PREFIX)
+app.include_router(donations_router, prefix=config.API_V1_PREFIX)
 app.include_router(contacts_router, prefix=config.API_V1_PREFIX)
 app.include_router(volunteers_router, prefix=config.API_V1_PREFIX)
 app.include_router(warehouse_router, prefix=config.API_V1_PREFIX)

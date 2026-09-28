@@ -56,6 +56,20 @@ RESEND_API_KEY = os.getenv("RESEND_API_KEY", "").strip()
 RESEND_FROM_EMAIL = os.getenv("RESEND_FROM_EMAIL", "Shohay Emergency <onboarding@resend.dev>").strip()
 RESEND_CONFIGURED = bool(RESEND_API_KEY)
 
+# ── SSLCommerz Payment Gateway (donations) ──
+# Sandbox by default using SSLCommerz's published public demo store — real sandbox
+# transactions, no signup needed. Swap in your own free sandbox store_id/store_passwd
+# from https://developer.sslcommerz.com/registration/ any time; set SSLCOMMERZ_SANDBOX=false
+# only once you have real production credentials.
+SSLCOMMERZ_STORE_ID = os.getenv("SSLCOMMERZ_STORE_ID", "testbox").strip()
+SSLCOMMERZ_STORE_PASSWORD = os.getenv("SSLCOMMERZ_STORE_PASSWORD", "qwerty").strip()
+SSLCOMMERZ_SANDBOX = os.getenv("SSLCOMMERZ_SANDBOX", "true").strip().lower() in ("1", "true", "yes")
+SSLCOMMERZ_BASE_URL = "https://sandbox.sslcommerz.com" if SSLCOMMERZ_SANDBOX else "https://securepay.sslcommerz.com"
+
+# Publicly reachable backend URL — SSLCommerz calls success/fail/cancel/ipn here
+# server-to-server, so this can never be localhost, even in local development.
+BACKEND_PUBLIC_URL = os.getenv("BACKEND_PUBLIC_URL", "https://shohaybackend.vercel.app").strip().rstrip("/")
+
 # ── App Metadata ──
 PROJECT_NAME = "Shohay Flood Relief & Disaster Response API"
 API_V1_PREFIX = "/api"

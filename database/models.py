@@ -55,6 +55,26 @@ class CampaignModel(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class DonationModel(Base):
+    __tablename__ = "donations"
+
+    id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    campaign_id: Mapped[str] = mapped_column(String(50), ForeignKey("campaigns.id"), index=True, nullable=False)
+    tran_id: Mapped[str] = mapped_column(String(100), unique=True, index=True, nullable=False)
+    amount: Mapped[float] = mapped_column(Float, nullable=False)
+    currency: Mapped[str] = mapped_column(String(10), default="BDT")
+    donor_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    donor_email: Mapped[str] = mapped_column(String(255), nullable=False)
+    donor_phone: Mapped[str] = mapped_column(String(50), nullable=False)
+    return_origin: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="Pending", index=True)  # Pending, Success, Failed, Cancelled
+    val_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    bank_tran_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    card_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    validated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
 class ContactModel(Base):
     __tablename__ = "contacts"
 

@@ -14,7 +14,7 @@ from .models import (
     AlertModel, ShelterModel, CampaignModel, ContactModel,
     AssistanceRequestModel, VolunteerProfileModel,
     VolunteerAssignmentModel, WarehouseItemModel, UserModel,
-    WarehouseMovementModel
+    WarehouseMovementModel, DonationModel
 )
 from .mock_data import PREDEFINED_SKILLS, PREDEFINED_EQUIPMENT, PREDEFINED_GENDERS
 
@@ -67,6 +67,18 @@ def shelter_to_dict(s: ShelterModel) -> Dict[str, Any]:
         "routeStatus": s.route_status,
         "category": s.category,
         "amenities": s.amenities if isinstance(s.amenities, dict) else {},
+    }
+
+def donation_to_dict(d: DonationModel) -> Dict[str, Any]:
+    return {
+        "tranId": d.tran_id,
+        "status": d.status,
+        "amount": d.amount,
+        "currency": d.currency,
+        "campaignId": d.campaign_id,
+        "donorName": d.donor_name,
+        "createdAt": iso(d.created_at),
+        "validatedAt": iso(d.validated_at),
     }
 
 def campaign_to_dict(c: CampaignModel) -> Dict[str, Any]:
@@ -433,6 +445,57 @@ class Repository:
             "householdsReached": f"{households:,}",
             "totalRaisedBDT": f"৳{(total_raised / 100000):.1f}L",
         }
+
+    # ── DONATIONS (SSLCommerz) ──
+    def create_donation(
+        self, db: Session, campaign_id: str, amount: float,
+        donor_name: str, donor_email: str, donor_phone: str, return_origin: str
+    ) -> DonationModel:
+        campaign = db.query(CampaignModel).filter(CampaignModel.id == campaign_id).first()
+        if not campaign:
+            raise RepositoryError("Campaign not found.", status_code=404)
+        donation = DonationModel(
+            id=new_id("don"),
+            campaign_id=campaign_id,
+            tran_id=f"SHY{uuid.uuid4().hex[:16].upper()}",
+            amount=amount,
+            donor_name=donor_name,
+            donor_email=donor_email,
+            donor_phone=donor_phone,
+            return_origin=return_origin,
+            status="Pending",
+        )
+        db.add(donation)
+        db.commit()
+        db.refresh(donation)
+        return donation
+
+    def get_donation_by_tran_id(self, db: Session, tran_id: str) -> Optional[DonationModel]:
+        return db.query(DonationModel).filter(DonationModel.tran_id == tran_id).first()
+
+    def finalize_donation(
+        self, db: Session, tran_id: str, status: str,
+        val_id: Optional[str] = None, bank_tran_id: Optional[str] = None, card_type: Optional[str] = None
+    ) -> Optional[DonationModel]:
+        """Marks a donation Success/Failed/Cancelled. Crediting the campaign only happens once —
+        SSLCommerz calls both the success redirect AND the IPN webhook for the same payment."""
+        donation = self.get_donation_by_tran_id(db, tran_id)
+        if not donation:
+            return None
+        if donation.status == "Success":
+            return donation
+        donation.status = status
+        donation.val_id = val_id
+        donation.bank_tran_id = bank_tran_id
+        donation.card_type = card_type
+        donation.validated_at = datetime.utcnow()
+        if status == "Success":
+            campaign = db.query(CampaignModel).filter(CampaignModel.id == donation.campaign_id).first()
+            if campaign:
+                campaign.raised_amount = (campaign.raised_amount or 0) + donation.amount
+        db.commit()
+        db.refresh(donation)
+        return donation
 
     # ── CONTACTS ──
     def get_contacts(self, db: Session, category: Optional[str] = None, district: Optional[str] = None) -> List[Dict[str, Any]]:
