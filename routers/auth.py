@@ -1,5 +1,4 @@
-from typing import Optional, Dict, Any
-from fastapi import APIRouter, HTTPException, status, Depends, Header
+from fastapi import APIRouter, HTTPException, status, Depends
 from sqlalchemy.orm import Session
 
 import config
@@ -14,63 +13,29 @@ from schemas.auth import (
     ProfileUpdateRequest,
     AuthOptionsResponse,
     LoginRequest,
-    OTPVerifyRequest
+    VolunteerSignupRequest
 )
 from database.connection import get_db
-from database.supabase_repository import supabase_repo
-from database.repository import db as mem_db
+from database.repository import repo
+from routers.deps import get_current_user, require_legacy_auth
 from services.otp_service import otp_service
-from services.sms_service import sms_service
 from services.email_service import email_service
 
 router = APIRouter(prefix="/auth", tags=["Authentication & Profile"])
 
-
-def get_current_user_from_token(
-    authorization: Optional[str] = Header(None),
-    db: Optional[Session] = Depends(get_db)
-) -> AuthUser:
-    """
-    Dependency that decodes Bearer token and returns the authenticated AuthUser.
-    In local development, if no header is provided, returns demo user for testing.
-    """
-    if not authorization or not authorization.startswith("Bearer "):
-        if config.ENVIRONMENT in ("development", "test"):
-            # Provide default demo user for convenience in dev
-            user_data = supabase_repo.get_user_by_id(db, "usr-public-001") if db is not None else mem_db.get_user_by_id("usr-public-001")
-            if user_data:
-                return AuthUser(**user_data)
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication token required. Header 'Authorization: Bearer <token>' missing or invalid."
-        )
-
-    token = authorization.split(" ", 1)[1].strip()
-    payload = otp_service.decode_token(token)
-    if not payload or not payload.get("sub"):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid, expired, or malformed authentication token."
-        )
-
-    user_id = payload["sub"]
-    user_data = supabase_repo.get_user_by_id(db, user_id) if db is not None else mem_db.get_user_by_id(user_id)
-    if not user_data:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User account matching this token was not found."
-        )
-
-    return AuthUser(**user_data)
+# Sign-in normally happens in the browser with Supabase Auth; the backend then only needs
+# GET /auth/me. Endpoints marked "legacy" are the older self-issued-token flow and stay
+# disabled unless ALLOW_LEGACY_AUTH=true (used by the automated test suite).
 
 
 # ── 1. SEND OTP (Exclusively Email via Resend) ──
 @router.post(
     "/send-otp",
+    dependencies=[Depends(require_legacy_auth)],
     response_model=SendOTPResponse,
     summary="Send verification OTP to user email via Resend"
 )
-def send_otp(request: SendOTPRequest, db: Optional[Session] = Depends(get_db)):
+def send_otp(request: SendOTPRequest, db: Session = Depends(get_db)):
     """
     Dispatches a 6-digit security OTP code to the user's email address via Resend.
     - If API key is not configured, automatically logs the OTP and returns debug_otp in development.
@@ -78,10 +43,7 @@ def send_otp(request: SendOTPRequest, db: Optional[Session] = Depends(get_db)):
     clean_email = (request.email or request.identifier or "").strip().lower()
 
     # Check if user already exists
-    if db is not None:
-        existing_user = supabase_repo.get_user_by_email(db, clean_email)
-    else:
-        existing_user = mem_db.get_user_by_email(clean_email)
+    existing_user = repo.get_user_by_email(db, clean_email)
 
     is_new = (existing_user is None)
 
@@ -114,10 +76,11 @@ def send_otp(request: SendOTPRequest, db: Optional[Session] = Depends(get_db)):
 # ── 2. VERIFY OTP ──
 @router.post(
     "/verify-otp",
+    dependencies=[Depends(require_legacy_auth)],
     response_model=AuthResponse,
     summary="Verify Email OTP code and authenticate or advance to registration"
 )
-def verify_otp(request: VerifyOTPRequest, db: Optional[Session] = Depends(get_db)):
+def verify_otp(request: VerifyOTPRequest, db: Session = Depends(get_db)):
     """
     Validates the 6-digit OTP received via email:
     - If user exists: Issues persistent session bearer token and returns profile.
@@ -133,10 +96,7 @@ def verify_otp(request: VerifyOTPRequest, db: Optional[Session] = Depends(get_db
         )
 
     # Find existing account by email
-    if db is not None:
-        user_data = supabase_repo.get_user_by_email(db, clean_email)
-    else:
-        user_data = mem_db.get_user_by_email(clean_email)
+    user_data = repo.get_user_by_email(db, clean_email)
 
     if user_data:
         token = otp_service.create_token({
@@ -176,9 +136,10 @@ def verify_otp(request: VerifyOTPRequest, db: Optional[Session] = Depends(get_db
     "/register/public",
     response_model=AuthResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_legacy_auth)],
     summary="Register a new Public user / volunteer profile"
 )
-def register_public(request: PublicRegisterRequest, db: Optional[Session] = Depends(get_db)):
+def register_public(request: PublicRegisterRequest, db: Session = Depends(get_db)):
     """
     Creates a minimal Public user profile:
     - First name, last name, phone, optional email
@@ -188,7 +149,7 @@ def register_public(request: PublicRegisterRequest, db: Optional[Session] = Depe
     """
     # Check if user with this email already exists
     clean_email = request.email.strip().lower()
-    existing = supabase_repo.get_user_by_email(db, clean_email) if db is not None else mem_db.get_user_by_email(clean_email)
+    existing = repo.get_user_by_email(db, clean_email)
     if existing:
         update_data = {
             "first_name": request.first_name.strip(),
@@ -199,10 +160,7 @@ def register_public(request: PublicRegisterRequest, db: Optional[Session] = Depe
             "gender": request.gender or existing.get("gender"),
             "avatar": request.avatar or existing.get("avatar")
         }
-        if db is not None:
-            updated_user = supabase_repo.update_user(db, existing["id"], update_data) or existing
-        else:
-            updated_user = mem_db.update_user(existing["id"], update_data) or existing
+        updated_user = repo.update_user(db, existing["id"], update_data) or existing
 
         token = otp_service.create_token({
             "sub": updated_user["id"],
@@ -237,10 +195,7 @@ def register_public(request: PublicRegisterRequest, db: Optional[Session] = Depe
         "verification_status": "Verified"
     }
 
-    if db is not None:
-        created_user = supabase_repo.create_user(db, user_payload)
-    else:
-        created_user = mem_db.create_user(user_payload)
+    created_user = repo.create_user(db, user_payload)
 
     token = otp_service.create_token({
         "sub": created_user["id"],
@@ -263,16 +218,17 @@ def register_public(request: PublicRegisterRequest, db: Optional[Session] = Depe
     "/register/fieldworker",
     response_model=AuthResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_legacy_auth)],
     summary="Register a Fieldworker profile with personal verification & certificates"
 )
-def register_fieldworker(request: FieldworkerRegisterRequest, db: Optional[Session] = Depends(get_db)):
+def register_fieldworker(request: FieldworkerRegisterRequest, db: Session = Depends(get_db)):
     """
     Creates a Fieldworker profile with personal verification details:
     - Same as public profile (name, phone, mail, skills, equipment, avatar, gender)
     - Plus: NID number, residential address, Date of Birth (DOB), and optional experience certificate.
     """
     clean_email = request.email.strip().lower()
-    existing = supabase_repo.get_user_by_email(db, clean_email) if db is not None else mem_db.get_user_by_email(clean_email)
+    existing = repo.get_user_by_email(db, clean_email)
     if existing:
         update_data = {
             "first_name": request.first_name.strip(),
@@ -283,10 +239,7 @@ def register_fieldworker(request: FieldworkerRegisterRequest, db: Optional[Sessi
             "gender": request.gender or existing.get("gender"),
             "avatar": request.avatar or existing.get("avatar")
         }
-        if db is not None:
-            updated_user = supabase_repo.update_user(db, existing["id"], update_data) or existing
-        else:
-            updated_user = mem_db.update_user(existing["id"], update_data) or existing
+        updated_user = repo.update_user(db, existing["id"], update_data) or existing
 
         token = otp_service.create_token({
             "sub": updated_user["id"],
@@ -321,10 +274,7 @@ def register_fieldworker(request: FieldworkerRegisterRequest, db: Optional[Sessi
         "verification_status": "Pending"
     }
 
-    if db is not None:
-        created_user = supabase_repo.create_user(db, user_payload)
-    else:
-        created_user = mem_db.create_user(user_payload)
+    created_user = repo.create_user(db, user_payload)
 
     token = otp_service.create_token({
         "sub": created_user["id"],
@@ -348,14 +298,12 @@ def register_fieldworker(request: FieldworkerRegisterRequest, db: Optional[Sessi
     response_model=AuthOptionsResponse,
     summary="Get predefined list of skills, equipment, genders, and roles"
 )
-def get_auth_options(db: Optional[Session] = Depends(get_db)):
+def get_auth_options(db: Session = Depends(get_db)):
     """
     Returns lists of predefined skills and equipment tags to easily render multi-select chips/checklists,
     while allowing users to type custom additions.
     """
-    if db is not None:
-        return supabase_repo.get_auth_options()
-    return mem_db.get_auth_options()
+    return repo.get_auth_options()
 
 
 # ── 6. CURRENT USER PROFILE ──
@@ -364,7 +312,7 @@ def get_auth_options(db: Optional[Session] = Depends(get_db)):
     response_model=AuthUser,
     summary="Get profile of currently logged-in user"
 )
-def get_current_user(current_user: AuthUser = Depends(get_current_user_from_token)):
+def read_current_user(current_user: AuthUser = Depends(get_current_user)):
     """
     Returns the authenticated user's profile based on the Authorization Bearer token.
     """
@@ -379,8 +327,8 @@ def get_current_user(current_user: AuthUser = Depends(get_current_user_from_toke
 )
 def update_profile(
     updates: ProfileUpdateRequest,
-    current_user: AuthUser = Depends(get_current_user_from_token),
-    db: Optional[Session] = Depends(get_db)
+    current_user: AuthUser = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
     """
     Allows updating profile fields including custom skills, equipment, address, avatar, etc.
@@ -389,10 +337,7 @@ def update_profile(
     if not update_data:
         return current_user
 
-    if db is not None:
-        updated = supabase_repo.update_user(db, current_user.id, update_data)
-    else:
-        updated = mem_db.update_user(current_user.id, update_data)
+    updated = repo.update_user(db, current_user.id, update_data)
 
     if not updated:
         raise HTTPException(
@@ -403,10 +348,52 @@ def update_profile(
     return AuthUser(**updated)
 
 
+# ── 8. VOLUNTEER SIGN-UP (SIGNED-IN USER) ──
+@router.post(
+    "/register/volunteer",
+    response_model=AuthUser,
+    summary="Register the signed-in user as a field volunteer"
+)
+def register_volunteer(
+    request: VolunteerSignupRequest,
+    current_user: AuthUser = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Saves volunteer details for the authenticated user. Public accounts become fieldworkers
+    with verification pending; admins keep their role.
+    """
+    update_data = {
+        "first_name": request.first_name.strip(),
+        "last_name": request.last_name.strip(),
+        "phone_number": (request.phone_number or "").strip() or current_user.phone_number,
+        "skills": request.skills,
+        "equipment": request.equipment,
+    }
+    if current_user.role == "public":
+        update_data["role"] = "fieldworker"
+        update_data["verification_status"] = "Pending"
 
-# ─── 8. DIRECT DATABASE LOGIN (NO VERIFICATION BARRIER) ───
-@router.post("/login", response_model=AuthResponse, summary="Direct Database Authentication")
-def direct_login(request: LoginRequest, db: Optional[Session] = Depends(get_db)):
+    updated = repo.update_user(db, current_user.id, update_data)
+
+    if not updated:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Failed to save volunteer details; user not found."
+        )
+
+    repo.update_volunteer_details(db, updated, request.district, request.skills)
+    return AuthUser(**updated)
+
+
+# ─── 9. DIRECT DATABASE LOGIN (LEGACY — REQUIRES ALLOW_LEGACY_AUTH) ───
+@router.post(
+    "/login",
+    response_model=AuthResponse,
+    summary="Direct Database Authentication (legacy, disabled by default)",
+    dependencies=[Depends(require_legacy_auth)],
+)
+def direct_login(request: LoginRequest, db: Session = Depends(get_db)):
     """
     Authenticates directly against the database with zero OTP/email verification barriers.
     - If user exists in DB: Returns user profile and persistent JWT token.
@@ -420,30 +407,19 @@ def direct_login(request: LoginRequest, db: Optional[Session] = Depends(get_db))
         )
 
     # Search in database by email, phone, or identifier
-    user_data = None
-    if db is not None:
-        user_data = (
-            supabase_repo.get_user_by_email(db, target)
-            or supabase_repo.get_user_by_phone(db, target)
-            or supabase_repo.get_user_by_identifier(db, target)
-        )
-    else:
-        user_data = (
-            mem_db.get_user_by_email(target)
-            or mem_db.get_user_by_phone(target)
-            or mem_db.get_user_by_identifier(target)
-        )
+    user_data = (
+        repo.get_user_by_email(db, target)
+        or repo.get_user_by_phone(db, target)
+        or repo.get_user_by_identifier(db, target)
+    )
 
     if user_data:
         req_role = (request.role or "").strip().lower()
         if req_role in ("admin", "volunteer", "fieldworker") and user_data.get("role") != req_role:
             db_role = "fieldworker" if req_role == "volunteer" else req_role
-            if db is not None:
-                updated = supabase_repo.update_user(db, user_data["id"], {"role": db_role})
-                if updated:
-                    user_data = updated
-            else:
-                user_data["role"] = db_role
+            updated = repo.update_user(db, user_data["id"], {"role": db_role})
+            if updated:
+                user_data = updated
 
         token = otp_service.create_token({
             "sub": user_data["id"],
@@ -500,10 +476,7 @@ def direct_login(request: LoginRequest, db: Optional[Session] = Depends(get_db))
         "verification_status": "Verified"
     }
 
-    if db is not None:
-        created_user = supabase_repo.create_user(db, user_payload)
-    else:
-        created_user = mem_db.create_user(user_payload)
+    created_user = repo.create_user(db, user_payload)
 
     token = otp_service.create_token({
         "sub": created_user["id"],

@@ -160,6 +160,17 @@ class ProfileUpdateRequest(BaseModel):
     address: Optional[str] = None
     experience_certificate: Optional[str] = None
 
+class VolunteerSignupRequest(BaseModel):
+    """
+    Volunteer sign-up for the already-authenticated user (identity comes from the bearer token).
+    """
+    first_name: str = Field(..., min_length=1, max_length=100)
+    last_name: str = Field(..., min_length=1, max_length=100)
+    phone_number: Optional[str] = Field(None, max_length=50)
+    district: Optional[str] = Field(None, max_length=100, description="Primary operating district")
+    skills: List[str] = Field(default_factory=list)
+    equipment: List[str] = Field(default_factory=list)
+
 class AuthOptionsResponse(BaseModel):
     skills: List[str]
     equipment: List[str]

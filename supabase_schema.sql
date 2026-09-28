@@ -2,6 +2,8 @@
 -- SHOHAY BACKEND — SUPABASE POSTGRESQL SCHEMA & INITIAL DATA
 -- Copy and run in: Supabase Dashboard > SQL Editor > New Query
 -- ============================================================
+-- NOTE: after running this file on a NEW database, also run migrations/001_flow_uav_rls.sql
+-- (adds the volunteer-flow columns, warehouse movements, the UAV tables and Row Level Security).
 
 -- 1. Alerts Table
 CREATE TABLE IF NOT EXISTS alerts (

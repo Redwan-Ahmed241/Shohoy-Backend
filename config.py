@@ -21,12 +21,24 @@ else:
     SUPABASE_DB_URL = raw_db_url
 
 SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key-change-in-production")
-SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+SUPABASE_URL = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "")
 
+# ── Supabase Auth ──
+# Emails that get the admin (District Coordinator) role when they sign in with Supabase Auth.
+ADMIN_EMAILS = {e.strip().lower() for e in os.getenv("ADMIN_EMAILS", "").split(",") if e.strip()}
+
+# Legacy passwordless endpoints (/auth/login, /auth/register/public, /auth/register/fieldworker)
+# accept any email with no verification, so they are disabled unless explicitly turned on.
+ALLOW_LEGACY_AUTH = os.getenv("ALLOW_LEGACY_AUTH", "false").strip().lower() in ("1", "true", "yes")
+
 # When SUPABASE_DB_URL is present, database mode is Supabase PostgreSQL.
-# Otherwise, falls back gracefully to in-memory mock storage.
+# Otherwise the app uses a local SQLite file that is created and seeded with demo data.
 USE_SUPABASE = bool(SUPABASE_DB_URL)
+_default_local_db = "/tmp/shohay_local.db" if os.getenv("VERCEL") else os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "shohay_local.db"
+)
+LOCAL_DB_URL = os.getenv("LOCAL_DB_URL", f"sqlite:///{_default_local_db}")
 
 # ── Authentication & OTP Configuration ──
 OTP_EXPIRATION_SECONDS = int(os.getenv("OTP_EXPIRATION_SECONDS", "300"))  # 5 minutes
@@ -58,6 +70,7 @@ An emergency response coordination platform providing:
 - 24/7 verified emergency contact directories
 - Volunteer coordination & assignment tracking
 - Relief supply warehouse inventory and low-stock monitoring
+- UAV (drone) detections of stranded people, turned into rescue requests
 """
 
 # ── CORS ──

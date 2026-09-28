@@ -13,3 +13,6 @@ build/
 .vercel/
 .pytest_cache/
 FastAPI_Backend_Mastery_Guide.pdf
+
+# Local SQLite database (used when SUPABASE_DB_URL is not set)
+shohay_local.db

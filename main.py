@@ -12,6 +12,7 @@ from routers import (
     volunteers_router,
     warehouse_router,
     auth_router,
+    uav_router,
 )
 
 # 1. Create FastAPI Application Instance
@@ -51,6 +52,7 @@ app.include_router(contacts_router, prefix=config.API_V1_PREFIX)
 app.include_router(volunteers_router, prefix=config.API_V1_PREFIX)
 app.include_router(warehouse_router, prefix=config.API_V1_PREFIX)
 app.include_router(auth_router, prefix=config.API_V1_PREFIX)
+app.include_router(uav_router, prefix=config.API_V1_PREFIX)
 
 # 5. Root & Health Check Endpoints
 @app.get("/", tags=["Root"])
@@ -59,7 +61,7 @@ def root():
         "service": config.PROJECT_NAME,
         "status": "online",
         "version": config.VERSION,
-        "database": "supabase_postgresql" if config.USE_SUPABASE else "in_memory_mock",
+        "database": "supabase_postgresql" if config.USE_SUPABASE else "local_sqlite",
         "docs": "/docs",
         "endpoints": {
             "alerts": f"{config.API_V1_PREFIX}/alerts",
@@ -68,13 +70,14 @@ def root():
             "campaigns": f"{config.API_V1_PREFIX}/campaigns",
             "contacts": f"{config.API_V1_PREFIX}/contacts",
             "volunteers": f"{config.API_V1_PREFIX}/volunteers/profile",
-            "warehouse": f"{config.API_V1_PREFIX}/warehouse/inventory"
+            "warehouse": f"{config.API_V1_PREFIX}/warehouse/inventory",
+            "uav": f"{config.API_V1_PREFIX}/uav/drones"
         }
     }
 
 @app.get("/health", tags=["Health"])
 def health_check():
-    db_status = "supabase_connected" if config.USE_SUPABASE else "in_memory_ready"
+    db_status = "supabase_postgresql" if config.USE_SUPABASE else "local_sqlite"
     return {
         "status": "healthy",
         "timestamp": time.time(),

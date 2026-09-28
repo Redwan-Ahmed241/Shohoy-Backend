@@ -1,6 +1,11 @@
 """
-Database connection management for Supabase PostgreSQL via SQLAlchemy 2.0.
-Configured specifically for serverless deployments (Vercel) and transaction poolers.
+Database connection management via SQLAlchemy 2.0.
+
+- SUPABASE_DB_URL set   -> Supabase PostgreSQL (production). NullPool keeps serverless
+                           functions (Vercel) from leaking pooled connections.
+- SUPABASE_DB_URL empty -> a local SQLite file (LOCAL_DB_URL). Tables are created and
+                           filled with demo data automatically, so anyone can run the
+                           full app without access to the production database.
 """
 from typing import Generator, Optional
 from sqlalchemy import create_engine
@@ -18,11 +23,7 @@ SessionLocal = None
 def init_engine(db_url: Optional[str] = None):
     """Initialize or re-initialize database engine."""
     global engine, SessionLocal
-    url = db_url or config.SUPABASE_DB_URL
-    if not url:
-        engine = None
-        SessionLocal = None
-        return None
+    url = db_url or config.SUPABASE_DB_URL or config.LOCAL_DB_URL
 
     # Normalize driver prefix
     if url.startswith("postgres://"):
@@ -46,24 +47,28 @@ def init_engine(db_url: Optional[str] = None):
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     return engine
 
-if config.USE_SUPABASE:
-    init_engine()
 
-def get_session() -> Optional[Session]:
-    """Return a new database session or None if not configured."""
-    if SessionLocal is None:
-        return None
+def prepare_local_database():
+    """Creates all tables in the local SQLite database and seeds demo data once."""
+    from . import models  # noqa: F401  (registers every table on Base.metadata)
+    from .seed import seed_if_empty
+
+    Base.metadata.create_all(engine)
+    with SessionLocal() as db:
+        seed_if_empty(db)
+
+
+init_engine()
+if not config.USE_SUPABASE:
+    prepare_local_database()
+
+
+def get_session() -> Session:
+    """Return a new database session."""
     return SessionLocal()
 
-def get_db() -> Generator[Optional[Session], None, None]:
-    """
-    FastAPI dependency that yields a database session.
-    Yields None if Supabase is not configured, triggering fallback to in-memory store.
-    """
-    if SessionLocal is None:
-        yield None
-        return
-
+def get_db() -> Generator[Session, None, None]:
+    """FastAPI dependency that yields a database session and always closes it."""
     db = SessionLocal()
     try:
         yield db

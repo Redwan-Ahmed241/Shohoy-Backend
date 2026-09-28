@@ -12,9 +12,21 @@ project_dir = os.path.abspath(os.path.dirname(__file__))
 if project_dir not in sys.path:
     sys.path.insert(0, project_dir)
 
+# Run against a throwaway SQLite database and never send real email.
+import tempfile
+os.environ["SUPABASE_DB_URL"] = ""
+os.environ["LOCAL_DB_URL"] = f"sqlite:///{tempfile.mkdtemp()}/test_api.db"
+os.environ["RESEND_API_KEY"] = ""
+# This suite exercises the legacy register endpoints, which are off by default.
+os.environ.setdefault("ALLOW_LEGACY_AUTH", "true")
 
 from fastapi.testclient import TestClient
 from main import app
+from services.otp_service import otp_service
+
+# Seeded local users (database/seed.py)
+ADMIN = {"Authorization": f"Bearer {otp_service.create_token({'sub': 'usr-admin-001'})}"}
+FIELD = {"Authorization": f"Bearer {otp_service.create_token({'sub': 'usr-field-001'})}"}
 
 client = TestClient(app)
 
@@ -52,6 +64,10 @@ new_alert_payload = {
     "verificationStatus": "Government Verified"
 }
 res = client.post("/api/alerts", json=new_alert_payload)
+assert res.status_code == 401, "creating alerts must require sign-in"
+res = client.post("/api/alerts", json=new_alert_payload, headers=FIELD)
+assert res.status_code == 403, "volunteers must not create alerts"
+res = client.post("/api/alerts", json=new_alert_payload, headers=ADMIN)
 assert res.status_code == 201
 print("[PASS] POST /api/alerts passed, created:", res.json()["id"])
 
@@ -109,24 +125,24 @@ assert res.status_code == 200
 print(f"[PASS] GET /api/contacts passed: returned {len(res.json())} contacts")
 
 # 7. Volunteers
-res = client.get("/api/volunteers/profile")
+res = client.get("/api/volunteers/profile", headers=FIELD)
 assert res.status_code == 200
 print("[PASS] GET /api/volunteers/profile passed, volunteer:", res.json()["name"])
 
-res = client.get("/api/volunteers/assignments")
+res = client.get("/api/volunteers/assignments", headers=FIELD)
 assert res.status_code == 200
 print(f"[PASS] GET /api/volunteers/assignments passed: returned {len(res.json())} assignments")
 
-res = client.post("/api/volunteers/assignments/assign-1/accept")
+res = client.post("/api/volunteers/assignments/assign-1/accept", headers=FIELD)
 assert res.status_code == 200
 print("[PASS] POST /api/volunteers/assignments/assign-1/accept passed:", res.json())
 
 # 8. Warehouse
-res = client.get("/api/warehouse/inventory")
+res = client.get("/api/warehouse/inventory", headers=ADMIN)
 assert res.status_code == 200
 print(f"[PASS] GET /api/warehouse/inventory passed: returned {len(res.json())} items")
 
-res = client.get("/api/warehouse/alerts/low-stock")
+res = client.get("/api/warehouse/alerts/low-stock", headers=ADMIN)
 assert res.status_code == 200
 print(f"[PASS] GET /api/warehouse/alerts/low-stock passed: returned {len(res.json())} low stock items")
 

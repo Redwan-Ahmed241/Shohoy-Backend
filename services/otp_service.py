@@ -5,7 +5,24 @@ import hashlib
 import json
 import base64
 from typing import Optional, Dict, Any, Tuple
+import jwt
 import config
+
+# Supabase signs access tokens with the project's asymmetric keys (ES256), published as a JWKS.
+_supabase_jwks_client: Optional[jwt.PyJWKClient] = None
+
+
+def _get_supabase_jwks_client() -> Optional[jwt.PyJWKClient]:
+    global _supabase_jwks_client
+    if _supabase_jwks_client is None and config.SUPABASE_URL:
+        _supabase_jwks_client = jwt.PyJWKClient(
+            f"{config.SUPABASE_URL}/auth/v1/.well-known/jwks.json",
+            cache_keys=True,
+            lifespan=3600,
+            timeout=5,
+        )
+    return _supabase_jwks_client
+
 
 class OTPService:
     def __init__(self):
@@ -111,23 +128,13 @@ class OTPService:
         if not token:
             return None
 
-        # 1. Check for Supabase Auth JWT format
+        # 1. Supabase Auth JWT — the unverified issuer only routes the token; the signature decides.
         try:
-            import jwt
-            decoded = jwt.decode(token, options={"verify_signature": False})
-            iss = decoded.get("iss", "")
-            if "supabase" in iss or decoded.get("aud") == "authenticated":
-                if decoded.get("exp") and time.time() > decoded["exp"]:
-                    return None
-                user_meta = decoded.get("user_metadata", {}) or {}
-                return {
-                    "sub": decoded.get("sub"),
-                    "email": decoded.get("email"),
-                    "role": user_meta.get("role") or decoded.get("role") or "public",
-                    "supabase": True
-                }
-        except Exception:
-            pass
+            unverified = jwt.decode(token, options={"verify_signature": False})
+        except jwt.PyJWTError:
+            return None
+        if str(unverified.get("iss", "")).endswith("/auth/v1"):
+            return self._decode_supabase_token(token)
 
         # 2. Check internal HMAC-SHA256 token
         try:
@@ -160,6 +167,34 @@ class OTPService:
             return payload
         except Exception:
             return None
+
+    def _decode_supabase_token(self, token: str) -> Optional[Dict[str, Any]]:
+        """
+        Verifies a Supabase Auth access token against the project's JWKS.
+        The app role is NOT taken from the token; it comes from the users table.
+        """
+        client = _get_supabase_jwks_client()
+        if client is None:
+            return None
+        try:
+            signing_key = client.get_signing_key_from_jwt(token)
+            claims = jwt.decode(
+                token,
+                signing_key.key,
+                algorithms=["ES256", "RS256"],
+                audience="authenticated",
+                issuer=f"{config.SUPABASE_URL}/auth/v1",
+            )
+        except jwt.PyJWTError:
+            return None
+
+        return {
+            "sub": claims.get("sub"),
+            "email": claims.get("email") or None,
+            "phone": claims.get("phone") or None,
+            "user_metadata": claims.get("user_metadata") or {},
+            "supabase": True,
+        }
 
 
 otp_service = OTPService()

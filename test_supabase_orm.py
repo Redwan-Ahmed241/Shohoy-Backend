@@ -18,7 +18,7 @@ from database.models import (
     AssistanceRequestModel, VolunteerProfileModel,
     VolunteerAssignmentModel, WarehouseItemModel, UserModel
 )
-from database.supabase_repository import supabase_repo
+from database.repository import repo
 
 print("=" * 60)
 print("TESTING SUPABASE SQLALCHEMY ORM & REPOSITORY LAYER")
@@ -32,7 +32,7 @@ print("[PASS] Table schemas generated successfully with Base.metadata.create_all
 db = connection.get_session()
 
 # 2. Test Alert CRUD
-alert_res = supabase_repo.create_alert(db, {
+alert_res = repo.create_alert(db, {
     "severity": "CRITICAL",
     "type": "Flash Flood Warning",
     "title": "Severe River Inundation",
@@ -43,7 +43,7 @@ alert_res = supabase_repo.create_alert(db, {
 assert alert_res["id"] == "alert-1", f"Expected alert-1, got {alert_res['id']}"
 print("[PASS] create_alert passed:", alert_res["id"], alert_res["title"])
 
-alerts = supabase_repo.get_alerts(db, search="Tahirpur")
+alerts = repo.get_alerts(db, search="Tahirpur")
 assert len(alerts) == 1, f"Search by affectedArea failed: {len(alerts)}"
 print("[PASS] get_alerts with affectedArea search passed!")
 
@@ -64,27 +64,27 @@ shelter = ShelterModel(
 db.add(shelter)
 db.commit()
 
-shelters = supabase_repo.get_shelters(db, status="Open", district="Sunamganj")
+shelters = repo.get_shelters(db, status="Open", district="Sunamganj")
 assert len(shelters) == 1
 print("[PASS] get_shelters passed:", shelters[0]["name"])
 
-stats = supabase_repo.get_shelter_stats(db)
+stats = repo.get_shelter_stats(db)
 assert stats["totalShelters"] == 1
 assert stats["openShelters"] == 1
 print("[PASS] get_shelter_stats passed:", stats)
 
 # 4. Test Assistance Requests CRUD
-req = supabase_repo.create_request(db, {
+req = repo.create_request(db, {
     "types": ["rescue", "food"],
     "householdSize": 5,
     "vulnerableCount": {"children": 2},
     "location": {"district": "Sunamganj"},
     "contact": {"name": "Rahim", "phone": "01711111111"}
 })
-assert req["trackingId"].startswith("SHY-2024-")
+assert req["trackingId"].startswith("SHY-") and len(req["trackingId"]) == 15
 print("[PASS] create_request passed:", req["trackingId"])
 
-fetched_req = supabase_repo.get_request_by_tracking_id(db, req["trackingId"])
+fetched_req = repo.get_request_by_tracking_id(db, req["trackingId"])
 assert fetched_req is not None
 print("[PASS] get_request_by_tracking_id passed!")
 
@@ -104,9 +104,9 @@ camp = CampaignModel(
 db.add(camp)
 db.commit()
 
-campaigns = supabase_repo.get_campaigns(db)
+campaigns = repo.get_campaigns(db)
 assert len(campaigns) == 1
-camp_stats = supabase_repo.get_campaign_stats(db)
+camp_stats = repo.get_campaign_stats(db)
 assert camp_stats["activeCampaigns"] == 1
 print("[PASS] Campaigns & stats passed:", camp_stats)
 
@@ -126,7 +126,7 @@ contact = ContactModel(
 db.add(contact)
 db.commit()
 
-contacts = supabase_repo.get_contacts(db, category="National Emergency", district="Sunamganj")
+contacts = repo.get_contacts(db, category="National Emergency", district="Sunamganj")
 assert len(contacts) == 1
 print("[PASS] get_contacts passed:", contacts[0]["title"])
 
@@ -158,12 +158,12 @@ assignment = VolunteerAssignmentModel(
 db.add(assignment)
 db.commit()
 
-prof = supabase_repo.get_volunteer_profile(db)
+prof = repo.get_volunteer_profile(db, {"id": "vol-1", "first_name": "Test", "last_name": "Volunteer"})
 assert prof["name"] == "Test Volunteer"
-assigns = supabase_repo.get_open_assignments(db)
+assigns = repo.get_open_assignments(db)
 assert len(assigns) == 1
-supabase_repo.update_assignment_status(db, "assign-1", "Assigned")
-assigns_after = supabase_repo.get_open_assignments(db)
+repo.update_assignment_status(db, "assign-1", "Assigned")
+assigns_after = repo.get_open_assignments(db)
 assert len(assigns_after) == 0
 print("[PASS] Volunteer profile, assignments, and status update passed!")
 
@@ -185,16 +185,16 @@ item = WarehouseItemModel(
 db.add(item)
 db.commit()
 
-inventory = supabase_repo.get_warehouse_inventory(db)
+inventory = repo.get_warehouse_inventory(db)
 assert len(inventory) == 1
-low_stock = supabase_repo.get_low_stock_items(db)
+low_stock = repo.get_low_stock_items(db)
 assert len(low_stock) == 1
-expiring = supabase_repo.get_expiring_items(db)
+expiring = repo.get_expiring_items(db)
 assert len(expiring) == 1
 print("[PASS] Warehouse inventory, low-stock, and expiring queries passed!")
 
 # 9. Test Users (Public & Fieldworker)
-public_user = supabase_repo.create_user(db, {
+public_user = repo.create_user(db, {
     "role": "public",
     "first_name": "Sadman",
     "last_name": "Shakib",
@@ -210,7 +210,7 @@ assert public_user["id"].startswith("usr-public")
 assert public_user["role"] == "public"
 print("[PASS] Supabase ORM create_user (Public) passed:", public_user["firstName"], public_user["lastName"])
 
-field_user = supabase_repo.create_user(db, {
+field_user = repo.create_user(db, {
     "role": "fieldworker",
     "first_name": "Tasmia",
     "last_name": "Rahman",
@@ -231,21 +231,21 @@ assert field_user["nidNumber"] == "19939988776655443"
 assert field_user["verificationStatus"] == "Pending"
 print("[PASS] Supabase ORM create_user (Fieldworker) passed:", field_user["firstName"], f"(NID: {field_user['nidNumber']})")
 
-by_phone = supabase_repo.get_user_by_phone(db, "01755554444")
+by_phone = repo.get_user_by_phone(db, "01755554444")
 assert by_phone is not None
 assert by_phone["id"] == public_user["id"]
 print("[PASS] Supabase ORM get_user_by_phone passed!")
 
-by_email = supabase_repo.get_user_by_email(db, "tasmia.field@rescue.org")
+by_email = repo.get_user_by_email(db, "tasmia.field@rescue.org")
 assert by_email is not None
 assert by_email["id"] == field_user["id"]
 print("[PASS] Supabase ORM get_user_by_email passed!")
 
-updated = supabase_repo.update_user(db, public_user["id"], {"skills": ["First Aid & CPR", "Drone Mapping", "Ambulance Driver"]})
+updated = repo.update_user(db, public_user["id"], {"skills": ["First Aid & CPR", "Drone Mapping", "Ambulance Driver"]})
 assert len(updated["skills"]) == 3
 print("[PASS] Supabase ORM update_user passed!")
 
-options = supabase_repo.get_auth_options()
+options = repo.get_auth_options()
 assert len(options["skills"]) > 0
 assert len(options["equipment"]) > 0
 print("[PASS] Supabase ORM get_auth_options passed!")

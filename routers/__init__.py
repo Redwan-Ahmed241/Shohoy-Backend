@@ -7,3 +7,4 @@ from .contacts import router as contacts_router
 from .volunteers import router as volunteers_router
 from .warehouse import router as warehouse_router
 from .auth import router as auth_router
+from .uav import router as uav_router

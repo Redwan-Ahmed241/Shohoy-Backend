@@ -42,3 +42,37 @@ class AssistanceRequestRecord(AssistanceRequestPayload):
     createdAt: str
 
     model_config = ConfigDict(populate_by_name=True)
+
+RequestStatus = Literal['Pending', 'Verified', 'Assigned', 'In Progress', 'Resolved']
+
+class RequestTask(BaseModel):
+    """The volunteer task dispatched for a request (coordinator view)."""
+    id: str
+    status: str
+    assignedVolunteerName: Optional[str] = None
+
+class AssistanceRequestAdminRecord(AssistanceRequestRecord):
+    task: Optional[RequestTask] = None
+
+class AssistanceRequestTracking(BaseModel):
+    """What anyone with a tracking ID may see: progress only, no personal details."""
+    trackingId: str
+    types: List[str]
+    status: str
+    district: str = ''
+    upazila: str = ''
+    createdAt: str
+    taskStatus: Optional[str] = None
+
+class RequestStatusUpdate(BaseModel):
+    status: RequestStatus
+    notes: Optional[str] = Field(None, max_length=500)
+
+class DispatchPayload(BaseModel):
+    """Volunteer task created from a citizen request."""
+    title: str = Field(..., min_length=3, max_length=500)
+    location: str = Field(..., min_length=1, max_length=255)
+    district: str = Field(..., min_length=1, max_length=100)
+    durationHours: int = Field(4, ge=1, le=72)
+    teamSize: int = Field(4, ge=1, le=100)
+    priority: Literal['low', 'medium', 'high', 'critical'] = 'high'
