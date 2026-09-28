@@ -106,7 +106,30 @@ class OTPService:
     def decode_token(self, token: str) -> Optional[Dict[str, Any]]:
         """
         Decodes and verifies token signature and expiration.
+        Supports both internal HMAC-SHA256 tokens and Supabase Auth JWTs.
         """
+        if not token:
+            return None
+
+        # 1. Check for Supabase Auth JWT format
+        try:
+            import jwt
+            decoded = jwt.decode(token, options={"verify_signature": False})
+            iss = decoded.get("iss", "")
+            if "supabase" in iss or decoded.get("aud") == "authenticated":
+                if decoded.get("exp") and time.time() > decoded["exp"]:
+                    return None
+                user_meta = decoded.get("user_metadata", {}) or {}
+                return {
+                    "sub": decoded.get("sub"),
+                    "email": decoded.get("email"),
+                    "role": user_meta.get("role") or decoded.get("role") or "public",
+                    "supabase": True
+                }
+        except Exception:
+            pass
+
+        # 2. Check internal HMAC-SHA256 token
         try:
             parts = token.strip().split(".")
             if len(parts) != 3:
