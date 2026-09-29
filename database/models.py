@@ -105,6 +105,9 @@ class AssistanceRequestModel(Base):
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(20), index=True, default="Pending")
     created_at: Mapped[str] = mapped_column(String(50), nullable=False)
+    # Set only when the citizen was signed in at submission time — lets them see their own
+    # requests without re-entering the tracking ID. Anonymous submission stays fully supported.
+    citizen_id: Mapped[Optional[str]] = mapped_column(String(50), index=True, nullable=True)
 
 
 class VolunteerProfileModel(Base):

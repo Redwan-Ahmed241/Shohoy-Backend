@@ -357,11 +357,22 @@ class Repository:
             notes=payload.get("notes"),
             status="Pending",
             created_at=datetime.now().strftime("%Y-%m-%d %H:%M"),
+            citizen_id=payload.get("citizen_id"),
         )
         db.add(req)
         db.commit()
         db.refresh(req)
         return request_to_dict(req)
+
+    def get_requests_by_citizen(self, db: Session, citizen_id: str) -> List[Dict[str, Any]]:
+        """Every request this signed-in citizen submitted, newest first — no tracking ID needed."""
+        rows = (
+            db.query(AssistanceRequestModel)
+            .filter(AssistanceRequestModel.citizen_id == citizen_id)
+            .order_by(AssistanceRequestModel.created_at.desc())
+            .all()
+        )
+        return [request_to_tracking_dict(r) for r in rows]
 
     def get_request_by_tracking_id(self, db: Session, tracking_id: str) -> Optional[Dict[str, Any]]:
         clean_id = tracking_id.strip().upper()

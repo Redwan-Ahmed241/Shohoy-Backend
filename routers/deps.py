@@ -127,6 +127,20 @@ def get_current_user(
     return AuthUser(**user_data)
 
 
+def get_current_user_optional(
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db)
+) -> Optional[AuthUser]:
+    """Like get_current_user, but returns None instead of 401 when signed out — for endpoints
+    that work anonymously but attach the signed-in identity when one is present."""
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    try:
+        return get_current_user(authorization=authorization, db=db)
+    except HTTPException:
+        return None
+
+
 def require_roles(*roles: str):
     """Dependency factory: only users whose role is in `roles` get through (403 otherwise)."""
     def checker(current_user: AuthUser = Depends(get_current_user)) -> AuthUser:

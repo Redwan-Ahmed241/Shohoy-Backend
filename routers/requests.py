@@ -9,9 +9,10 @@ from schemas.requests import (
     RequestStatusUpdate,
     DispatchPayload,
 )
+from schemas.auth import AuthUser
 from database.connection import get_db
 from database.repository import repo
-from routers.deps import require_roles, repository_errors
+from routers.deps import require_roles, repository_errors, get_current_user, get_current_user_optional
 
 router = APIRouter(prefix="/requests", tags=["Assistance Requests"])
 
@@ -19,9 +20,24 @@ coordinator_only = [Depends(require_roles("admin"))]
 
 
 @router.post("", response_model=AssistanceRequestRecord, status_code=status.HTTP_201_CREATED, summary="Submit emergency assistance request")
-def submit_assistance_request(payload: AssistanceRequestPayload, db: Session = Depends(get_db)):
-    """Citizen multi-step assistance request submission. No account needed."""
-    return repo.create_request(db, payload.model_dump())
+def submit_assistance_request(
+    payload: AssistanceRequestPayload,
+    user: Optional[AuthUser] = Depends(get_current_user_optional),
+    db: Session = Depends(get_db)
+):
+    """Citizen multi-step assistance request submission. No account needed — but if you're
+    signed in, the request is linked to your account so you can find it later without the
+    tracking ID."""
+    data = payload.model_dump()
+    if user:
+        data["citizen_id"] = user.id
+    return repo.create_request(db, data)
+
+
+@router.get("/mine", response_model=List[AssistanceRequestTracking], summary="My submitted requests")
+def my_requests(user: AuthUser = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Every request I submitted while signed in, newest first."""
+    return repo.get_requests_by_citizen(db, user.id)
 
 
 @router.get("/track/{tracking_id}", response_model=AssistanceRequestTracking, summary="Track assistance request status")
