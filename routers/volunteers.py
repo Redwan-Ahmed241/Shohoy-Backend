@@ -8,6 +8,7 @@ from schemas.volunteers import (
     AssignmentCreatePayload,
     CheckInPayload,
     AvailabilityPayload,
+    VerificationUpdatePayload,
 )
 from database.connection import get_db
 from database.repository import repo
@@ -44,6 +45,16 @@ def create_field_assignment(payload: AssignmentCreatePayload, db: Session = Depe
             summary="All tasks with their assigned volunteer", dependencies=[Depends(coordinator)])
 def list_all_assignments(status: Optional[str] = None, db: Session = Depends(get_db)):
     return repo.get_all_assignments(db, status=status)
+
+
+@router.patch("/{user_id}/verification", summary="Approve, reject, or reset a volunteer's verification",
+              dependencies=[Depends(coordinator)])
+def set_volunteer_verification(user_id: str, payload: VerificationUpdatePayload, db: Session = Depends(get_db)):
+    """A newly-registered field volunteer starts 'Pending' until a coordinator reviews and verifies them."""
+    updated = repo.update_user(db, user_id, {"verification_status": payload.status})
+    if not updated:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Volunteer '{user_id}' not found.")
+    return updated
 
 
 @router.post("/assignments/{assignment_id}/cancel", response_model=VolunteerAssignment,

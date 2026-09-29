@@ -35,6 +35,18 @@ class ShelterSummaryStats(BaseModel):
     nearlyFull: int
     freeSpaces: str
 
+class ShelterCreate(BaseModel):
+    name: str
+    address: str
+    upazila: str
+    district: str
+    capacity: int
+    occupancy: int = 0
+    category: ShelterCategory = 'Government Building'
+    status: ShelterStatus = 'Open'
+    routeStatus: RouteStatus = 'Route OK'
+    amenities: Optional[ShelterAmenities] = None
+
 class ShelterFilterParams(BaseModel):
     status: Optional[str] = 'All'
     district: Optional[str] = 'All'

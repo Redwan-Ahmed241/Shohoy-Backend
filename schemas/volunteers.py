@@ -46,3 +46,6 @@ class CheckInPayload(BaseModel):
 
 class AvailabilityPayload(BaseModel):
     isAvailable: bool
+
+class VerificationUpdatePayload(BaseModel):
+    status: Literal['Verified', 'Pending', 'Rejected']

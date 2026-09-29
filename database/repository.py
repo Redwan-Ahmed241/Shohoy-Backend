@@ -298,6 +298,29 @@ class Repository:
 
         return [shelter_to_dict(s) for s in shelters]
 
+    def create_shelter(self, db: Session, data: Dict[str, Any]) -> Dict[str, Any]:
+        default_amenities = {
+            "drinkingWater": True, "toilets": True, "womenToilets": True,
+            "electricity": True, "generator": False, "food": True, "medicalSupport": False
+        }
+        shelter = ShelterModel(
+            id=new_id("shelter"),
+            name=data["name"],
+            address=data["address"],
+            upazila=data["upazila"],
+            district=data["district"],
+            capacity=data.get("capacity", 0),
+            occupancy=data.get("occupancy", 0),
+            category=data.get("category", "Government Building"),
+            status=data.get("status", "Open"),
+            route_status=data.get("routeStatus", "Route OK"),
+            amenities=data.get("amenities") or default_amenities,
+        )
+        db.add(shelter)
+        db.commit()
+        db.refresh(shelter)
+        return shelter_to_dict(shelter)
+
     def get_shelter_stats(self, db: Session) -> Dict[str, Any]:
         shelters = db.query(ShelterModel).all()
         total = len(shelters)
